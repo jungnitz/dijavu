@@ -1,0 +1,21 @@
+[workspace]
+members = ["dijavu", "dijavu_macros"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+readme = "README.md"
+repository = "https://codeberg.org/jungnik/dijavu"
+
+[workspace.dependencies]
+rustc-hash = "2"
+ctor = "0.6"
+anyhow = "1"
+dijavu_macros = { path = "dijavu_macros", version = "0.0.1" }
+
+syn = "2"
+darling = "0.23"
+proc-macro2 = "1"
+convert_case = "0.11"
+quote = "1"
