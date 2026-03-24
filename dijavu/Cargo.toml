@@ -1,6 +1,7 @@
 [package]
 name = "dijavu"
 version = "0.0.1"
+description = "Two-phased dependency injection"
 
 edition.workspace = true
 license.workspace = true

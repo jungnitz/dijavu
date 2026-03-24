@@ -1,6 +1,8 @@
 [package]
 name = "dijavu_macros"
 version = "0.0.1"
+description = "Macros for dijavu"
+
 edition.workspace = true
 license.workspace = true
 readme.workspace = true
