@@ -65,3 +65,17 @@ async fn same_type_values() -> Result<()> {
     assert_eq!(&*container.get::<AnotherThing>()?.0, "another thing!");
     Ok(())
 }
+
+#[tokio::test]
+async fn macro_on_build_hook() -> Result<()> {
+    #[derive(InitInjectable)]
+    #[inject(init(auto, on_build = (|value: &mut TInit, _, _| {
+        value.0 = 42;
+        Ok(())
+    })))]
+    pub struct T(#[inject(init)] Value<i32>);
+
+    let container = InitAppContainer::default().build().await?;
+    assert_eq!(*container.get::<T>().unwrap().0, 42);
+    Ok(())
+}

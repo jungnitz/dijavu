@@ -77,12 +77,13 @@ pub use self::injectable::{Injectable, ScopeInjectable};
 ///
 /// ## Attributes
 ///
-/// ### Struct-level:
+/// ### Struct-level
 ///
 /// | Attribute           | Description                                      | Default              |
 /// |---------------------|--------------------------------------------------|----------------------|
 /// | `init(auto)`        | Always initialize during build, even when not explicitly accessed | disabled |
 /// | `init(type = Name`) | Name of generated init struct                    | `<StructName>Init`   |
+/// | `init(on_build = <expr>`) | Runs function `<expr>` with arguments `&mut <InitStruct>, &mut Data, &mut AppContainerBuilder` where the second argument contains the initialization state | - |
 ///
 /// ### Field-level
 ///
@@ -147,7 +148,6 @@ pub mod __private {
         impl<I: 'static, T: DataItem> DataKey for Key<I, T> {
             type Item = T;
         }
-        // is there a better way without two look ups that doesn't upset the borrow checker?
         if container.data_mut().contains_key::<Key<I, T>>() {
             return Ok(container.data_mut().get_mut::<Key<I, T>>().unwrap());
         }

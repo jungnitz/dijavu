@@ -10,7 +10,7 @@ use quote::{format_ident, quote};
 use std::ops::Deref;
 use std::rc::Rc;
 use syn::spanned::Spanned;
-use syn::{Data, DeriveInput};
+use syn::{Data, DeriveInput, Expr};
 
 #[derive(Clone)]
 pub struct DeriveInjectable(Rc<DeriveInjectableInner>);
@@ -20,11 +20,13 @@ pub struct DeriveInjectableInner {
     ident: Ident,
     generics: GenericsHelper,
     init_struct_name: Option<Ident>,
+    on_build: Option<Expr>,
     init: bool,
     automatic: bool,
 }
 
 pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStream> {
+    // TODO: cleanup this here mess
     #[derive(FromDeriveInput)]
     #[darling(attributes(inject))]
     struct Meta {
@@ -34,6 +36,7 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
     #[derive(Default, FromMeta)]
     struct InitMeta {
         auto: Flag,
+        on_build: Option<Expr>,
         #[darling(rename = "type")]
         ty: Option<Ident>,
     }
@@ -53,6 +56,17 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
             if meta.init.ty.is_some() {
                 return Err(syn::Error::new(
                     meta.init.ty.span(),
+                    "init only supported when deriving `InitInjectable`",
+                ));
+            }
+            None
+        },
+        on_build: if init {
+            meta.init.on_build
+        } else {
+            if meta.init.on_build.is_some() {
+                return Err(syn::Error::new(
+                    meta.init.on_build.span(),
                     "init only supported when deriving `InitInjectable`",
                 ));
             }
@@ -85,6 +99,11 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
 
     let impl_init_injectable = mode.init_struct_name.as_ref().map(|name| {
         let construct = fields.init_construct(phantom_data);
+        let on_build_hook = mode.on_build.as_ref().map(|on_build| {
+            quote!(
+                (#on_build(&mut value, &mut *data, &mut *builder) as dijavu::Result<()>)?;
+            )
+        });
         let on_build = fields.init_on_build();
         quote! {
             impl<#impl_gen> dijavu::InitInjectable for #ident<#ty_gen> #where_clause {
@@ -99,7 +118,8 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
                         |container| {
                             Ok(#name::<#ty_gen> #construct)
                         },
-                        |value, data, builder| {
+                        |mut value, data, builder| {
+                            #on_build_hook
                             #on_build
                             Ok(())
                         }
