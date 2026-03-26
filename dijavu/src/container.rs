@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use crate::data::{Data, DataEntry};
 use crate::injectable::{Injectable, ScopeInjectable};
 use crate::{DataKey, Error, Result};
@@ -67,23 +69,34 @@ impl AppContainer {
     }
 }
 
-/// Builder for constructing the [`AppContainer`] during initialization.
+/// Utility for constructing the final [`AppContainer`] during initialization
 ///
 /// `AppContainerBuilder` is used during the _build phase_ to assemble the final runtime container
 /// from initialization data.
 /// It is typically accessed from within build hooks registered on the initialization container.
 ///
 /// The builder separates data into two categories: _App data_ becomes part of the final
-/// [`AppContainer`], while _init results_ are returned separately after build.
+/// [`AppContainer`], while _start data_ is passed to the registered _start functions_ on final
+/// assembly (i.e. in [`build`](Self::build)).
 /// This allows initialization code to:
 ///
 /// - construct runtime dependencies,
 /// - extract and transform initialization state and
-/// - return one-time artifacts (e.g. routers, startup handles)
+/// - use one-time artifacts in the start functions (e.g. routers, startup handles)
 #[derive(Default)]
 pub struct AppContainerBuilder {
-    app: Data,
-    init_results: Data,
+    app_data: Data,
+    start_data: Data,
+    #[expect(clippy::type_complexity)]
+    start_fns: Vec<
+        Box<
+            dyn for<'a> FnOnce(
+                AppContainer,
+                &'a mut Data,
+            )
+                -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>,
+        >,
+    >,
 }
 
 impl AppContainerBuilder {
@@ -97,7 +110,7 @@ impl AppContainerBuilder {
     where
         K: DataKey,
     {
-        let DataEntry::Vacant(entry) = self.app.entry::<K>() else {
+        let DataEntry::Vacant(entry) = self.app_data.entry::<K>() else {
             return Err(Error::msg("app data entry already present"));
         };
         entry.insert(value);
@@ -113,31 +126,52 @@ impl AppContainerBuilder {
     /// You should **really** aim to guarantee that no entry is inserted twice (e.g. using private
     /// key types).
     /// If you run into an error here, this usually means bad design on your end.
-    pub fn insert_init_result<K>(&mut self, value: K::Item) -> Result<()>
+    pub fn insert_start_data<K>(&mut self, value: K::Item) -> Result<()>
     where
         K: DataKey,
     {
-        let DataEntry::Vacant(entry) = self.init_results.entry::<K>() else {
+        let DataEntry::Vacant(entry) = self.start_data.entry::<K>() else {
             return Err(Error::msg("init result entry already present"));
         };
         entry.insert(value);
         Ok(())
     }
 
+    /// Adds a start function to be executed in [`build`](Self::build).
+    pub fn add_start_fn(
+        &mut self,
+        func: impl FnOnce(AppContainer, &mut Data) -> Result<()> + 'static,
+    ) {
+        self.add_async_start_fn(move |container, data| {
+            let result = func(container, data);
+            Box::pin(async { result })
+        });
+    }
+
+    /// Adds a start function to be executed in [`build`](Self::build).
+    pub fn add_async_start_fn(
+        &mut self,
+        func: impl for<'a> FnOnce(
+            AppContainer,
+            &'a mut Data,
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>
+        + 'static,
+    ) {
+        self.start_fns.push(Box::new(func));
+    }
+
     /// Finalizes the build process.
     ///
-    /// Consumes the builder and returns:
-    ///
-    /// - the constructed [`AppContainer`] (runtime data)
-    /// - a [`Data`] instance containing init-only results
-    ///
+    /// Runs the start functions with the collected start data and then returns the constructed
+    /// [`AppContainer`] with runtime data.
     /// The runtime data is leaked to `'static`, making the resulting [`AppContainer`] globally
     /// usable for the lifetime of the application.
-    pub fn build(self) -> (AppContainer, Data) {
-        (
-            AppContainer(Box::leak(Box::new(self.app))),
-            self.init_results,
-        )
+    pub async fn build(mut self) -> dijavu::Result<AppContainer> {
+        let container = AppContainer(Box::leak(Box::new(self.app_data)));
+        for start_fn in self.start_fns {
+            start_fn(container, &mut self.start_data).await?
+        }
+        Ok(container)
     }
 }
 

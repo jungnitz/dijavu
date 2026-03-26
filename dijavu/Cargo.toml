@@ -13,3 +13,7 @@ rustc-hash = { workspace = true }
 ctor = { workspace = true }
 anyhow = { workspace = true }
 dijavu_macros = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1.50", features = ["macros", "rt"] }
+tokio-test = { version = "0.4" }

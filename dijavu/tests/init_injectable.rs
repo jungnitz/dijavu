@@ -7,27 +7,27 @@ pub struct Thing {
     conf: Value<String>,
 }
 
-#[test]
-fn simple() -> Result<()> {
+#[tokio::test]
+async fn simple() -> Result<()> {
     let mut container = InitAppContainer::default();
     let thing = container.get::<Thing>()?;
     thing.conf = String::from("hello world!");
 
-    let (container, _) = container.build()?;
+    let container = container.build().await?;
     assert_eq!(&*container.get::<Thing>()?.conf, "hello world!");
     Ok(())
 }
 
-#[test]
-fn no_init_error() -> Result<()> {
+#[tokio::test]
+async fn no_init_error() -> Result<()> {
     let container = InitAppContainer::default();
-    let (container, _) = container.build()?;
+    let container = container.build().await?;
     assert!(container.get::<Thing>().is_err());
     Ok(())
 }
 
-#[test]
-fn auto_init() -> Result<()> {
+#[tokio::test]
+async fn auto_init() -> Result<()> {
     struct CrazyDefault(String);
     impl Default for CrazyDefault {
         fn default() -> Self {
@@ -40,14 +40,14 @@ fn auto_init() -> Result<()> {
     pub struct AnotherThing(#[inject(init)] Value<CrazyDefault>);
 
     let container = InitAppContainer::default();
-    let (container, _) = container.build()?;
+    let container = container.build().await?;
     assert_eq!(&*container.get::<AnotherThing>()?.0.0, "crazy");
 
     Ok(())
 }
 
-#[test]
-fn same_type_values() -> Result<()> {
+#[tokio::test]
+async fn same_type_values() -> Result<()> {
     #[derive(InitInjectable)]
     pub struct AnotherThing(#[inject(init)] Value<String>);
 
@@ -59,7 +59,7 @@ fn same_type_values() -> Result<()> {
     let another_thing = container.get::<AnotherThing>()?;
     another_thing.0 = String::from("another thing!");
 
-    let (container, _) = container.build()?;
+    let container = container.build().await?;
 
     assert_eq!(&*container.get::<Thing>()?.conf, "hello world!");
     assert_eq!(&*container.get::<AnotherThing>()?.0, "another thing!");

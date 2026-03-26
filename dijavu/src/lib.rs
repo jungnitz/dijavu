@@ -60,17 +60,19 @@ pub use self::injectable::{Injectable, ScopeInjectable};
 /// #     #[inject(init)]
 /// #     init_value: Value<String>,
 /// # }
+/// # tokio_test::block_on(async {
 /// // initialization
 /// let mut container: InitAppContainer = InitAppContainer::default();
 /// let init: &mut ServiceInitValue = container.get::<Service>().unwrap();
 /// init.init_value = "hello".to_owned();
 ///
 /// // build
-/// let (container, _) = container.build().unwrap();
+/// let container = container.build().await.unwrap();
 ///
 /// // runtime
 /// let service: Service = container.get::<Service>().unwrap();
 /// assert_eq!(*service.init_value, "hello");
+/// # });
 /// ```
 ///
 /// ## Attributes

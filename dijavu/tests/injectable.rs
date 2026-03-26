@@ -12,8 +12,8 @@ fn simple() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn from_data() -> Result<()> {
+#[tokio::test]
+async fn from_data() -> Result<()> {
     pub struct Dependency(&'static str);
 
     struct DependencyKey;
@@ -30,7 +30,7 @@ fn from_data() -> Result<()> {
 
     let mut builder = AppContainerBuilder::default();
     builder.insert_app_data::<DependencyKey>("test".to_owned())?;
-    let (container, _) = builder.build();
+    let container = builder.build().await?;
     assert_eq!(container.get::<Dependency>()?.0, "test".to_owned());
     Ok(())
 }

@@ -78,12 +78,12 @@ impl InitAppContainer {
     }
 
     /// Finalizes initialization and constructs the [`AppContainer`] and initialization results.
-    pub fn build(mut self) -> Result<(AppContainer, Data)> {
+    pub async fn build(mut self) -> Result<AppContainer> {
         let mut builder = AppContainerBuilder::default();
         hooks::run_global_before_build_hooks(&mut self)?;
         for hook in take(&mut self.on_build) {
             hook(&mut self.data, &mut builder)?;
         }
-        Ok(builder.build())
+        builder.build().await
     }
 }
