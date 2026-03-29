@@ -45,6 +45,11 @@ impl Error {
     {
         Self(self.0.context(context))
     }
+
+    /// Convert to a std error trait object
+    pub fn into_std_error(self) -> Box<dyn std::error::Error + Send + Sync> {
+        self.0.into_boxed_dyn_error()
+    }
 }
 
 impl<E> From<E> for Error
