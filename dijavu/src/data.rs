@@ -96,6 +96,20 @@ where
             }
         }
     }
+
+    /// Inserts the value provided by the fallible closure if no value is currently present.
+    pub fn or_try_insert_with<E>(
+        self,
+        f: impl FnOnce() -> Result<K::Item, E>,
+    ) -> Result<&'a mut K::Item, E> {
+        match self {
+            DataEntry::Occupied(entry) => Ok(entry.into_mut()),
+            DataEntry::Vacant(entry) => match f() {
+                Ok(value) => Ok(entry.insert(value)),
+                Err(err) => Err(err),
+            },
+        }
+    }
 }
 
 /// Vacant entry in [`Data`]
