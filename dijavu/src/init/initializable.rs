@@ -18,10 +18,8 @@ use std::ops::Deref;
 ///
 /// ## Implementations
 ///
-/// Currently, there is one builtin implementation:
-/// [`Value`], which initially generates the default value of its generic parameter on
-/// initialization, which can then be modified. During runtime, a reference to the final value
-/// is provided.
+/// dijavu provides some simple, but useful, implementations of the trait out of the box.
+/// See e.g. [`Value`] or [`StartValue`] for examples.
 ///
 /// ## Namespacing
 ///
@@ -123,7 +121,7 @@ impl<T> Copy for Value<T> {}
 
 /// A value that is stored in the start data after initialization
 ///
-/// `StartValue<T, D>` allows modifying the `T` during initialization.
+/// `StartValue<T>` allows modifying the `T` during initialization.
 /// The initial value is the default of `T`.
 /// During the build phase, the `T` is then stored in the start data and can be retrieved from it
 /// via [`remove_from_start_data`](Self::remove_from_start_data).
