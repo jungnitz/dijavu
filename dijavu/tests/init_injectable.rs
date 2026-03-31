@@ -1,4 +1,4 @@
-use dijavu::{InitAppContainer, Result, Value};
+use dijavu::{InitAppContainer, Result, StartValue, Value};
 use dijavu_macros::InitInjectable;
 
 #[derive(InitInjectable)]
@@ -63,6 +63,24 @@ async fn same_type_values() -> Result<()> {
 
     assert_eq!(&*container.get::<Thing>()?.conf, "hello world!");
     assert_eq!(&*container.get::<AnotherThing>()?.0, "another thing!");
+    Ok(())
+}
+
+#[tokio::test]
+async fn start_value() -> Result<()> {
+    #[derive(InitInjectable)]
+    pub struct Thing(#[inject(init)] StartValue<String>);
+
+    let mut container = InitAppContainer::default();
+    container.get::<Thing>()?.0 = "hello!".to_owned();
+    container.on_start(|_, start_data| {
+        assert_eq!(
+            StartValue::<String>::remove_from_start_data(start_data).as_deref(),
+            Some("hello!")
+        );
+        Ok(())
+    });
+    container.build().await?;
     Ok(())
 }
 

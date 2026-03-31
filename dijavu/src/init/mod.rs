@@ -2,7 +2,7 @@ mod container;
 pub use self::container::InitAppContainer;
 
 mod initializable;
-pub use self::initializable::{Initializable, Value};
+pub use self::initializable::{Initializable, StartValue, Value};
 
 use crate::Injectable;
 
