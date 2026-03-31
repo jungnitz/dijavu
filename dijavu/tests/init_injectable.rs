@@ -1,4 +1,6 @@
-use dijavu::{InitAppContainer, Result, StartValue, Value};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use dijavu::{AppContainer, Data, InitAppContainer, Result, StartValue, Value};
 use dijavu_macros::InitInjectable;
 
 #[derive(InitInjectable)]
@@ -85,15 +87,31 @@ async fn start_value() -> Result<()> {
 }
 
 #[tokio::test]
-async fn macro_on_build_hook() -> Result<()> {
+async fn macro_hooks() -> Result<()> {
+    static ON_START: AtomicBool = AtomicBool::new(false);
+    static ON_START_ASYNC: AtomicBool = AtomicBool::new(false);
+
     #[derive(InitInjectable)]
-    #[inject(init(auto, on_build = (|value: &mut TInit, _, _| {
+    #[inject(init(auto, on_build = |value: &mut TInit, _, _| {
         value.0 = 42;
         Ok(())
-    })))]
+    }, on_start = |_: AppContainer, _: &mut Data| {
+        ON_START.store(true, Ordering::SeqCst);
+        Ok(())
+    }, on_start_async = async |_: AppContainer, _: &mut Data| {
+        ON_START_ASYNC.store(true, Ordering::SeqCst);
+        Ok(())
+    }))]
     pub struct T(#[inject(init)] Value<i32>);
 
+    ON_START.store(false, Ordering::SeqCst);
+    ON_START_ASYNC.store(false, Ordering::SeqCst);
+
     let container = InitAppContainer::default().build().await?;
+
     assert_eq!(*container.get::<T>().unwrap().0, 42);
+    assert!(ON_START.load(Ordering::SeqCst));
+    assert!(ON_START_ASYNC.load(Ordering::SeqCst));
+
     Ok(())
 }

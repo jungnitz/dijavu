@@ -26,7 +26,7 @@ pub enum InjectableFieldSource {
 impl InjectableField {
     pub fn from_field(derive: &DeriveInjectable, index: usize, field: Field) -> syn::Result<Self> {
         let attrs = FieldAttrs::from_field(&field)?;
-        if !derive.init && attrs.init.is_present() {
+        if !derive.init.is_some() && attrs.init.is_present() {
             return Err(syn::Error::new(
                 attrs.init.span(),
                 "you can only use `init` on a field when deriving `InitInjectable`",
