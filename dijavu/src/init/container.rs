@@ -1,6 +1,7 @@
 use crate::container::AppContainerBuilder;
 use crate::{AppContainer, Data, Result, hooks, init::InitInjectable};
 use std::mem::take;
+use std::pin::Pin;
 
 /// Mutable application container used during initialization
 ///
@@ -75,6 +76,38 @@ impl InitAppContainer {
         hook: impl FnOnce(&mut Data, &mut AppContainerBuilder) -> Result<()> + 'static,
     ) {
         self.on_build.push(Box::new(hook));
+    }
+
+    /// Registers a start hook.
+    ///
+    /// Start hooks are executed during [`build`](Self::build) after the [`AppContainer`] was
+    /// constructed and all start data was added by the build hooks.
+    pub fn on_start(
+        &mut self,
+        hook: impl for<'a> FnOnce(AppContainer, &'a mut Data) -> Result<()> + 'static,
+    ) {
+        self.on_build(move |_, builder| {
+            builder.add_start_fn(hook);
+            Ok(())
+        });
+    }
+
+    /// Registers an asynchronous start hook.
+    ///
+    /// Start hooks are executed during [`build`](Self::build) after the [`AppContainer`] was
+    /// constructed and all start data was added by the build hooks.
+    pub fn on_start_async(
+        &mut self,
+        hook: impl for<'a> FnOnce(
+            AppContainer,
+            &'a mut Data,
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>
+        + 'static,
+    ) {
+        self.on_build(move |_, builder| {
+            builder.add_async_start_fn(hook);
+            Ok(())
+        });
     }
 
     /// Finalizes initialization and constructs the [`AppContainer`] and initialization results.
