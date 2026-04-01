@@ -83,6 +83,7 @@ pub use self::injectable::{Injectable, ScopeInjectable};
 /// |---------------------|--------------------------------------------------|----------------------|
 /// | `init(auto)`        | Always initialize during build, even when not explicitly accessed | disabled |
 /// | `init(type = Name`) | Name of generated init struct                    | `<StructName>Init`   |
+/// | `init(on_construct = <expr>`) | Runs function `<expr>` with argument `&mut InitAppContainer` on first construction of the initialization value for an `InitAppContainer` | - |
 /// | `init(on_build = <expr>`) | Runs function `<expr>` with arguments `&mut <InitStruct>, &mut Data, &mut AppContainerBuilder` where the second argument contains the initialization state | - |
 /// | `init(on_start = <expr>`) | Runs function `<expr>` with arguments `AppContainer, &mut Data` on start (i.e. right after building the `AppContainer`) with the start data | - |
 /// | `init(on_start_async = <expr>`) | Runs async function `<expr>` with arguments `AppContainer, &mut Data` on start (i.e. right after building the `AppContainer`) with the start data | - |

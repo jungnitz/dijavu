@@ -26,6 +26,7 @@ pub struct InitConfig {
     struct_name: Ident,
     automatic: bool,
 
+    on_construct: Option<Expr>,
     on_build: Option<Expr>,
     on_start: Option<Expr>,
     on_start_async: Option<Expr>,
@@ -42,6 +43,7 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
     #[derive(Default, FromMeta)]
     struct InitMeta {
         auto: Flag,
+        on_construct: Option<Expr>,
         on_build: Option<Expr>,
         on_start: Option<Expr>,
         on_start_async: Option<Expr>,
@@ -59,6 +61,7 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
             .ty
             .unwrap_or_else(|| format_ident!("{}Init", input.ident)),
         automatic: init.auto.is_present(),
+        on_construct: init.on_construct,
         on_build: init.on_build,
         on_start: init.on_start,
         on_start_async: init.on_start_async,
@@ -102,6 +105,10 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
         });
         let struct_name = &init.struct_name;
         let on_build = fields.init_on_build();
+        let on_construct = init.on_construct.as_ref().map(|expr| quote!({
+            let res: Result<(), dijavu::Error> = (#expr)(container);
+            res?;
+        }));
         let on_start = init
             .on_start
             .as_ref()
@@ -135,6 +142,7 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
                     dijavu::__private::init_injectable_get_init::<Self, #struct_name<#ty_gen>>(
                         container,
                         |container| {
+                            #on_construct
                             Ok(#struct_name::<#ty_gen> #construct)
                         },
                         |mut value, data, builder| {

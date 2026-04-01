@@ -88,11 +88,23 @@ async fn start_value() -> Result<()> {
 
 #[tokio::test]
 async fn macro_hooks() -> Result<()> {
+    static ON_CONSTRUCT: AtomicBool = AtomicBool::new(false);
     static ON_START: AtomicBool = AtomicBool::new(false);
     static ON_START_ASYNC: AtomicBool = AtomicBool::new(false);
 
+    fn get_static_states() -> (bool, bool) {
+        let on_construct = ON_CONSTRUCT.load(Ordering::SeqCst);
+        let on_start = ON_START.load(Ordering::SeqCst);
+        let on_start_async = ON_START_ASYNC.load(Ordering::SeqCst);
+        assert_eq!(on_start, on_start_async);
+        (on_construct, on_start)
+    }
+
     #[derive(InitInjectable)]
-    #[inject(init(auto, on_build = |value: &mut TInit, _, _| {
+    #[inject(init(on_construct = |_init: &mut InitAppContainer| {
+        ON_CONSTRUCT.store(true, Ordering::SeqCst);
+        Ok(())
+    }, on_build = |value: &mut TInit, _, _| {
         value.0 = 42;
         Ok(())
     }, on_start = |_: AppContainer, _: &mut Data| {
@@ -107,11 +119,15 @@ async fn macro_hooks() -> Result<()> {
     ON_START.store(false, Ordering::SeqCst);
     ON_START_ASYNC.store(false, Ordering::SeqCst);
 
-    let container = InitAppContainer::default().build().await?;
+    let mut container = InitAppContainer::default();
+    assert_eq!(get_static_states(), (false, false));
 
+    container.get::<T>()?;
+    assert_eq!(get_static_states(), (true, false));
+
+    let container = container.build().await?;
+    assert_eq!(get_static_states(), (true, true));
     assert_eq!(*container.get::<T>().unwrap().0, 42);
-    assert!(ON_START.load(Ordering::SeqCst));
-    assert!(ON_START_ASYNC.load(Ordering::SeqCst));
 
     Ok(())
 }
