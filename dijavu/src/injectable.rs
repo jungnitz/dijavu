@@ -1,5 +1,5 @@
 use crate::container::{AppContainer, ScopeContainer};
-use std::convert::Infallible;
+use std::{convert::Infallible, marker::PhantomData};
 
 /// A type that can be constructed from an [`AppContainer`]
 ///
@@ -40,5 +40,13 @@ impl Injectable for () {
 
     fn get(_container: AppContainer) -> Result<Self, Self::Error> {
         Ok(())
+    }
+}
+
+impl<T: 'static> Injectable for PhantomData<T> {
+    type Error = Infallible;
+
+    fn get(_: AppContainer) -> Result<Self, Self::Error> {
+        Ok(PhantomData)
     }
 }
