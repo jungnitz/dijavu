@@ -1,3 +1,5 @@
+#[cfg(doc)]
+use crate::InitInjectable;
 use crate::data::DataItem;
 use crate::init::InitAppContainer;
 use crate::{AppContainer, AppContainerBuilder, Data, Result};
@@ -5,73 +7,54 @@ use dijavu::{DataKey, Error};
 use std::marker::PhantomData;
 use std::ops::Deref;
 
-/// A value that participates in the initialization → build → runtime lifecycle
+/// A value that can be used to build an [`InitInjectable`] type
 ///
-/// `Initializable` abstracts how a value:
+/// `Initializable` defines the behaviour of a field when using the `InitInjectable` macro on a
+/// type.
+/// In particular, it defines
 ///
-/// - is created during initialization
-/// - is moved into the final [`AppContainer`]
-/// - is retrieved at runtime
-///
-/// It is primarily used by derive macros to implement field-level initialization without requiring
-/// any verbose manual definitions.
+/// - the type of the field in the initialization type and how the initial value is constructed,
+/// - the data required for constructing it during runtime and how this data is constructed from the
+///   initialization value, and lastly
+/// - how the actual value is constructed from the data available at runtime
 ///
 /// ## Implementations
 ///
-/// dijavu provides some simple, but useful, implementations of the trait out of the box.
+/// dijavu provides some simple, but useful implementations of the trait out of the box.
 /// See e.g. [`Value`] or [`StartValue`] for examples.
-///
-/// ## Namespacing
-///
-/// The generic parameter `U` on methods is used to namespace stored values.
-/// Typically, you will want to use it as a generic parameter to a [`DataKey`] type, which avoids
-/// key collisions when the same `Initializable` type is used in multiple contexts.
 pub trait Initializable: Sized {
     type Error;
-    /// The intermediate initialization value.
-    ///
-    /// This is created during initialization and consumed during build.
+    /// The type of the data that is modifiable during initialization
     type Init;
+    /// The runtime state
+    type Runtime;
 
-    /// Creates the initial value during initialization.
-    ///
-    /// This is typically called lazily when the value is first requested.
-    fn new_init<U: 'static>(container: &mut InitAppContainer) -> Result<Self::Init, Self::Error>;
+    /// Creates the initial value for initialization.
+    fn new_init_value(container: &mut InitAppContainer) -> Result<Self::Init, Self::Error>;
 
-    /// Consumes the initialization value and inserts the runtime representation.
-    ///
-    /// Implementations should most likely insert data into the [`AppContainerBuilder`].
-    ///
-    /// The type parameter `U` is used to namespace stored values.
-    fn on_build<U: 'static>(
+    /// Consumes the initialization value and constructs the runtime data.
+    fn build_runtime_value(
         init: Self::Init,
         data: &mut Data,
         builder: &mut AppContainerBuilder,
-    ) -> Result<()>;
+    ) -> Result<Self::Runtime>;
 
     /// Retrieves the value from the [`AppContainer`] at runtime.
     ///
     /// This must match what was inserted during [`on_build`](Self::on_build).
-    fn get<U: 'static>(container: AppContainer) -> Result<Self, Self::Error>;
+    fn from_runtime_value(
+        runtime: &'static Self::Runtime,
+        container: AppContainer,
+    ) -> Result<Self, Self::Error>;
 }
 
 /// A simple, initializable value
 ///
 /// `Value<T>` is a lightweight [`Initializable`] implementation that allows modifying the `T`
-/// during initialization.
+/// during initialization and accessing (a reference to) the final value at runtime.
 /// The initial value is the default of `T`.
-/// During the build phase, the `T` is then stored in the application data and referenced during
-/// runtime.
-/// If the value was not initialized, an error is returned when attempting to retrieve the value
-/// during runtime.
 #[derive(Debug)]
 pub struct Value<T: 'static>(&'static T);
-
-struct ValueKey<U, T>(U, T);
-
-impl<U: 'static, T: DataItem + 'static> DataKey for ValueKey<U, T> {
-    type Item = T;
-}
 
 impl<T> Initializable for Value<T>
 where
@@ -79,27 +62,22 @@ where
 {
     type Error = Error;
     type Init = T;
+    type Runtime = T;
 
-    fn new_init<U: 'static>(_container: &mut InitAppContainer) -> Result<Self::Init, Self::Error> {
+    fn new_init_value(_container: &mut InitAppContainer) -> Result<Self::Init, Self::Error> {
         Ok(T::default())
     }
 
-    fn on_build<U: 'static>(
+    fn build_runtime_value(
         init: Self::Init,
         _data: &mut Data,
-        builder: &mut AppContainerBuilder,
-    ) -> Result<()> {
-        builder.insert_app_data::<ValueKey<U, T>>(init)?;
-        Ok(())
+        _builder: &mut AppContainerBuilder,
+    ) -> Result<T> {
+        Ok(init)
     }
 
-    fn get<U: 'static>(container: AppContainer) -> Result<Self, Self::Error> {
-        Ok(Self(
-            container
-                .data()
-                .get::<ValueKey<U, T>>()
-                .ok_or_else(|| Error::msg("uninitialized"))?,
-        ))
+    fn from_runtime_value(runtime: &'static T, _: AppContainer) -> Result<Self, Self::Error> {
+        Ok(Self(runtime))
     }
 }
 
@@ -139,12 +117,13 @@ where
 {
     type Error = Error;
     type Init = T;
+    type Runtime = ();
 
-    fn new_init<U: 'static>(_container: &mut InitAppContainer) -> Result<Self::Init, Self::Error> {
+    fn new_init_value(_container: &mut InitAppContainer) -> Result<Self::Init, Self::Error> {
         Ok(T::default())
     }
 
-    fn on_build<U: 'static>(
+    fn build_runtime_value(
         init: Self::Init,
         _data: &mut Data,
         builder: &mut AppContainerBuilder,
@@ -153,7 +132,10 @@ where
         Ok(())
     }
 
-    fn get<U: 'static>(_container: AppContainer) -> Result<Self, Self::Error> {
+    fn from_runtime_value(
+        _runtime: &'static (),
+        _container: AppContainer,
+    ) -> Result<Self, Self::Error> {
         Ok(Self(PhantomData))
     }
 }

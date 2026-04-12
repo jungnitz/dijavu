@@ -5,18 +5,13 @@ use crate::injectable::fields::InjectableFields;
 use crate::utils::GenericsHelper;
 use darling::util::Flag;
 use darling::{FromDeriveInput, FromMeta};
-use proc_macro2::{Ident, Span, TokenStream};
-use quote::{format_ident, quote};
-use std::ops::Deref;
+use proc_macro2::{Ident, TokenStream};
+use quote::{ToTokens, format_ident, quote};
 use std::rc::Rc;
-use syn::spanned::Spanned;
-use syn::{Data, DeriveInput, Expr};
+use syn::{Data, DeriveInput, Expr, Visibility};
 
-#[derive(Clone)]
-pub struct DeriveInjectable(Rc<DeriveInjectableInner>);
-
-pub struct DeriveInjectableInner {
-    span: Span,
+struct DeriveInjectableConfig {
+    vis: Visibility,
     ident: Ident,
     generics: GenericsHelper,
     init: Option<InitConfig>,
@@ -24,6 +19,7 @@ pub struct DeriveInjectableInner {
 
 pub struct InitConfig {
     struct_name: Ident,
+    runtime_struct_name: Ident,
     automatic: bool,
 
     on_construct: Option<Expr>,
@@ -55,71 +51,116 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
     if init {
         meta.init.get_or_insert_default();
     }
-
-    let init = meta.init.map(|init| InitConfig {
-        struct_name: init
-            .ty
-            .unwrap_or_else(|| format_ident!("{}Init", input.ident)),
-        automatic: init.auto.is_present(),
-        on_construct: init.on_construct,
-        on_build: init.on_build,
-        on_start: init.on_start,
-        on_start_async: init.on_start_async,
-    });
-    let mode = DeriveInjectable(Rc::new(DeriveInjectableInner {
-        span: input.span(),
+    let config = Rc::new(DeriveInjectableConfig {
+        vis: input.vis,
         ident: input.ident.clone(),
         generics: GenericsHelper::from_generics(input.generics),
-        init,
-    }));
-
-    let phantom_data = mode.generics.make_phantom_data();
-    let phantom_data = phantom_data.as_ref();
-
-    let vis = &input.vis;
-    let ident = &input.ident;
+        init: meta.init.map(|init| InitConfig {
+            struct_name: init
+                .ty
+                .unwrap_or_else(|| format_ident!("{}Init", input.ident)),
+            runtime_struct_name: format_ident!("{}Runtime", input.ident),
+            automatic: init.auto.is_present(),
+            on_construct: init.on_construct,
+            on_build: init.on_build,
+            on_start: init.on_start,
+            on_start_async: init.on_start_async,
+        }),
+    });
     let Data::Struct(struct_data) = input.data else {
-        return Err(syn::Error::new(mode.span, "must be a struct"));
+        return Err(syn::Error::new(config.ident.span(), "must be a struct"));
     };
 
-    let fields = InjectableFields::from_fields(&mode, struct_data.fields)?;
+    let fields = InjectableFields::from_fields(config.clone(), struct_data.fields)?;
+    let fields = &fields;
 
-    let construct_from_container = fields.construct_from_container();
-
-    let (impl_gen, ty_gen, where_clause) = mode.generics.split_for_impl();
-
-    let init_struct = mode.init.as_ref().map(|init| {
-        let fields = fields.init_fields(phantom_data, &where_clause);
-        let struct_name = &init.struct_name;
-        quote! {
-            #vis struct #struct_name<#impl_gen> #fields
-        }
+    let init_struct = config.init.as_ref().map(|init| DerivedStruct {
+        config: config.clone(),
+        fields,
+        name: &init.struct_name,
+        decls: InjectableFields::init_field_decls,
     });
+    let runtime_struct = config.init.as_ref().map(|init| DerivedStruct {
+        config: config.clone(),
+        fields,
+        name: &init.runtime_struct_name,
+        decls: InjectableFields::runtime_field_decls,
+    });
+    let impl_init_injectable = ImplInitInjectable {
+        fields,
+        config: config.clone(),
+    };
+    let impl_injectable = ImplInjectable {
+        fields,
+        config: config.clone(),
+    };
 
-    let impl_init_injectable = mode.init.as_ref().map(|init| {
-        let construct = fields.init_construct(phantom_data);
-        let on_build_hook = init.on_build.as_ref().map(|on_build| {
-            quote!(
-                ((#on_build)(&mut value, &mut *data, &mut *builder) as dijavu::Result<()>)?;
-            )
+    Ok(quote! {
+        #init_struct
+        const _: () = {
+            #runtime_struct
+            #impl_init_injectable
+            #impl_injectable
+        };
+    })
+}
+
+struct DerivedStruct<'a> {
+    fields: &'a InjectableFields,
+    config: Rc<DeriveInjectableConfig>,
+    name: &'a Ident,
+    decls: fn(&InjectableFields) -> TokenStream,
+}
+
+impl ToTokens for DerivedStruct<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let name = self.name;
+        let (impl_gen, _, _) = self.config.generics.split_for_impl();
+        let fields = (self.decls)(self.fields);
+        let vis = &self.config.vis;
+        tokens.extend(quote!(
+            #vis struct #name<#impl_gen> #fields
+        ))
+    }
+}
+
+struct ImplInitInjectable<'a> {
+    fields: &'a InjectableFields,
+    config: Rc<DeriveInjectableConfig>,
+}
+
+impl ToTokens for ImplInitInjectable<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Some(init) = &self.config.init else {
+            return;
+        };
+        let init_construct = self.fields.init_construct();
+        let init_struct_name = &init.struct_name;
+        let runtime_struct_name = &init.runtime_struct_name;
+
+        // hooks
+        let on_construct = init.on_construct.as_ref().map(|expr| {
+            quote!({
+                let res: Result<(), dijavu::Error> = (#expr)(container);
+                res?;
+            })
         });
-        let struct_name = &init.struct_name;
-        let on_build = fields.init_on_build();
-        let on_construct = init.on_construct.as_ref().map(|expr| quote!({
-            let res: Result<(), dijavu::Error> = (#expr)(container);
-            res?;
-        }));
-        let on_start = init
-            .on_start
-            .as_ref()
-            .map(|on_start| quote!(builder.add_start_fn(#on_start);));
-        let on_start_async = init.on_start_async.as_ref().map(|on_start_async| {
-            quote!(
-                builder.add_async_start_fn(|__dijavu_container: dijavu::AppContainer, __dijavu_data: &mut dijavu::Data| {
-                    Box::pin(async move { (#on_start_async)(__dijavu_container, __dijavu_data).await })
-                });
-            )
+        let on_build = init.on_build.as_ref().map(|on_build| {
+            quote!({
+                let res: Result<(), dijavu::Error> = (#on_build)(&mut init, &mut *data, &mut *builder);
+                res?;
+            })
         });
+        let on_start = init.on_start.iter();
+        let on_start_async = init.on_start_async.iter();
+        let on_start = quote!({
+            #( builder.add_start_fn(#on_start); )*
+            #( builder.add_async_start_fn(|__dijavu_container: dijavu::AppContainer, __dijavu_data: &mut dijavu::Data| {
+                Box::pin(async move { (#on_start_async)(__dijavu_container, __dijavu_data).await })
+            }); )*
+        });
+
+        let ident = &self.config.ident;
         let automatic = init.automatic.then(|| {
             quote! {
                 #[dijavu::__private::ctor::ctor(anonymous, crate_path = dijavu::__private::ctor)]
@@ -131,52 +172,60 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
                 }
             }
         });
-        quote! {
+        let (impl_gen, ty_gen, where_clause) = self.config.generics.split_for_impl();
+        let runtime_construct = self.fields.runtime_construct();
+        tokens.extend(quote! {
             impl<#impl_gen> dijavu::InitInjectable for #ident<#ty_gen> #where_clause {
                 type InitError = dijavu::Error;
-                type Init<'a> = &'a mut #struct_name<#ty_gen>;
+                type Init<'a> = &'a mut #init_struct_name<#ty_gen>;
 
                 fn get_init(
                     container: &mut dijavu::InitAppContainer
                 ) -> Result<Self::Init<'_>, Self::Error> {
-                    dijavu::__private::init_injectable_get_init::<Self, #struct_name<#ty_gen>>(
+                    dijavu::__private::impl_init_injectable_get_init::<Self, #init_struct_name<#ty_gen>, #runtime_struct_name::<#ty_gen>>(
                         container,
                         |container| {
                             #on_construct
-                            Ok(#struct_name::<#ty_gen> #construct)
+                            Ok(#init_struct_name::<#ty_gen> #init_construct)
                         },
-                        |mut value, data, builder| {
-                            #on_build_hook
+                        |mut init, data, builder| {
                             #on_build
                             #on_start
-                            #on_start_async
-                            Ok(())
+                            Ok(#runtime_struct_name::<#ty_gen> #runtime_construct)
                         }
                     )
                 }
             }
             #automatic
-        }
-    });
-
-    Ok(quote! {
-        #init_struct
-        #impl_init_injectable
-
-        impl<#impl_gen> dijavu::Injectable for #ident<#ty_gen> #where_clause {
-            type Error = dijavu::Error;
-
-            fn get(container: dijavu::AppContainer) -> Result<Self, Self::Error> {
-                Ok(Self #construct_from_container)
-            }
-        }
-    })
+        });
+    }
 }
 
-impl Deref for DeriveInjectable {
-    type Target = DeriveInjectableInner;
+struct ImplInjectable<'a> {
+    fields: &'a InjectableFields,
+    config: Rc<DeriveInjectableConfig>,
+}
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl ToTokens for ImplInjectable<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let (impl_gen, ty_gen, where_clause) = self.config.generics.split_for_impl();
+        let construct_from_container = self.fields.construct_from_container_and_runtime();
+        let ident = &self.config.ident;
+        let runtime = self.config.init.as_ref().map(|init| {
+            let struct_name = &init.runtime_struct_name;
+            quote!(
+                let runtime = dijavu::__private::impl_init_injectable_get_runtime::<Self, #struct_name>(container)?;
+            )
+        });
+        tokens.extend(quote!(
+            impl<#impl_gen> dijavu::Injectable for #ident<#ty_gen> #where_clause {
+                type Error = dijavu::Error;
+
+                fn get(container: dijavu::AppContainer) -> Result<Self, Self::Error> {
+                    #runtime
+                    Ok(Self #construct_from_container)
+                }
+            }
+        ));
     }
 }

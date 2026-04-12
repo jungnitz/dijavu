@@ -1,4 +1,6 @@
-use crate::injectable::DeriveInjectable;
+use std::rc::Rc;
+
+use crate::injectable::DeriveInjectableConfig;
 use darling::FromField;
 use darling::util::Flag;
 use proc_macro2::{Ident, TokenStream};
@@ -12,10 +14,10 @@ struct FieldAttrs {
 }
 
 pub struct InjectableField {
+    pub config: Rc<DeriveInjectableConfig>,
     pub index: usize,
     pub field: Field,
     pub source: InjectableFieldSource,
-    pub derive: DeriveInjectable,
 }
 
 pub enum InjectableFieldSource {
@@ -24,9 +26,13 @@ pub enum InjectableFieldSource {
 }
 
 impl InjectableField {
-    pub fn from_field(derive: &DeriveInjectable, index: usize, field: Field) -> syn::Result<Self> {
+    pub fn from_field(
+        config: Rc<DeriveInjectableConfig>,
+        index: usize,
+        field: Field,
+    ) -> syn::Result<Self> {
         let attrs = FieldAttrs::from_field(&field)?;
-        if !derive.init.is_some() && attrs.init.is_present() {
+        if config.init.is_none() && attrs.init.is_present() {
             return Err(syn::Error::new(
                 attrs.init.span(),
                 "you can only use `init` on a field when deriving `InitInjectable`",
@@ -40,7 +46,7 @@ impl InjectableField {
             } else {
                 InjectableFieldSource::Injectable
             },
-            derive: derive.clone(),
+            config,
         })
     }
 
@@ -61,7 +67,7 @@ impl InjectableField {
             .unwrap_or_else(|| format!(".{}", self.index))
     }
 
-    pub fn is_init(&self) -> bool {
+    fn is_init(&self) -> bool {
         matches!(self.source, InjectableFieldSource::InitValue)
     }
 
@@ -79,7 +85,7 @@ impl InjectableField {
         ))
     }
 
-    pub fn init_field_def(&self) -> Option<TokenStream> {
+    pub fn init_field_decl(&self) -> Option<TokenStream> {
         self.with_init_ident_and_ty(|ident, ty| quote!(#(#ident:)* #ty::Init))
     }
 
@@ -88,26 +94,30 @@ impl InjectableField {
             let error_msg = format!(
                 "could not create initialization state for field `{}` of `{}`",
                 self.field_name(),
-                self.derive.ident
+                self.config.ident
             );
             quote!(
-                #(#ident:)* #ty::new_init::<Self>(container)
+                #(#ident:)* #ty::new_init_value(container)
                     .map_err(|err| err.with_context(#error_msg))?
             )
         })
     }
 
-    pub fn init_field_on_build(&self) -> Option<TokenStream> {
-        self.with_init_ident_and_ty(|_, ty| {
+    pub fn runtime_field_decl(&self) -> Option<TokenStream> {
+        self.with_init_ident_and_ty(|ident, ty| quote!(#(#ident:)* #ty::Runtime))
+    }
+
+    pub fn runtime_field_construct(&self) -> Option<TokenStream> {
+        self.with_init_ident_and_ty(|ident, ty| {
             let accessor = self.accessor();
             let error_msg = format!(
-                "could not build runtime state for field `{}` of `{}`",
+                "could not create runtime state for field `{}` of `{}`",
                 self.field_name(),
-                self.derive.ident
+                self.config.ident
             );
             quote!(
-                #ty::on_build::<Self>(value.#accessor, data, builder)
-                    .map_err(|err| err.with_context(#error_msg))?;
+                #(#ident:)* #ty::build_runtime_value(init.#accessor, data, builder)
+                    .map_err(|err| err.with_context(#error_msg))?
             )
         })
     }
@@ -117,7 +127,7 @@ impl InjectableField {
         let error_msg = format!(
             "could not inject field `{}` of `{}`",
             self.field_name(),
-            self.derive.ident
+            self.config.ident
         );
         let ident = self.field.ident.iter();
         match self.source {
@@ -128,8 +138,9 @@ impl InjectableField {
                 )
             }
             InjectableFieldSource::InitValue => {
+                let accessor = self.accessor();
                 quote!(
-                    #(#ident:)* <#ty as dijavu::Initializable>::get::<Self>(container)
+                    #(#ident:)* <#ty as dijavu::Initializable>::from_runtime_value(&runtime.#accessor, container)
                         .map_err(|err| dijavu::Error::from(err).with_context(#error_msg))?
                 )
             }

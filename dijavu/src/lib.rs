@@ -132,37 +132,71 @@ pub use dijavu_macros::Injectable;
 #[doc(hidden)]
 pub mod __private {
     use crate::{
-        AppContainerBuilder, Data, DataKey, InitAppContainer, InitInjectable, Result,
+        AppContainer, AppContainerBuilder, Data, DataKey, InitAppContainer, InitInjectable, Result,
         data::DataItem,
     };
-    use std::marker::PhantomData;
+    use std::{any::type_name, marker::PhantomData};
 
     pub use ::ctor;
 
-    pub fn init_injectable_get_init<'a, I, T: DataItem>(
-        container: &'a mut InitAppContainer,
-        construct: impl FnOnce(&mut InitAppContainer) -> Result<T>,
-        on_build: impl FnOnce(T, &mut Data, &mut AppContainerBuilder) -> Result<()> + 'static,
-    ) -> Result<&'a mut T>
+    struct RuntimeKey<Injectable, Runtime>(PhantomData<(Injectable, Runtime)>);
+
+    impl<Injectable: 'static, Runtime> DataKey for RuntimeKey<Injectable, Runtime>
     where
-        I: InitInjectable<Init<'a> = &'a mut T>,
+        Runtime: DataItem,
     {
-        struct Key<I, T>(PhantomData<(I, T)>);
-        impl<I: 'static, T: DataItem> DataKey for Key<I, T> {
+        type Item = Runtime;
+    }
+
+    pub fn impl_init_injectable_get_init<'a, Injectable, Init, Runtime>(
+        container: &'a mut InitAppContainer,
+        construct: impl FnOnce(&mut InitAppContainer) -> Result<Init>,
+        into_runtime: impl FnOnce(Init, &mut Data, &mut AppContainerBuilder) -> Result<Runtime>
+        + 'static,
+    ) -> Result<&'a mut Init>
+    where
+        Injectable: for<'i> InitInjectable<Init<'i> = &'i mut Init>,
+        Init: DataItem,
+        Runtime: DataItem,
+    {
+        struct InitKey<T>(PhantomData<T>);
+        impl<T: DataItem> DataKey for InitKey<T> {
             type Item = T;
         }
-        if container.data_mut().contains_key::<Key<I, T>>() {
-            return Ok(container.data_mut().get_mut::<Key<I, T>>().unwrap());
+
+        if container.data_mut().contains_key::<InitKey<Init>>() {
+            return Ok(container.data_mut().get_mut::<InitKey<Init>>().unwrap());
         }
+
         let value = construct(container)?;
-        container.on_build(move |init, builder| {
-            let value = init.remove::<Key<I, T>>().unwrap();
-            on_build(value, init, builder)
+        container.on_build(move |data, builder| {
+            let value = data.remove::<InitKey<Init>>().unwrap();
+            let runtime = into_runtime(value, data, builder)?;
+            builder.insert_app_data::<RuntimeKey<Injectable, Runtime>>(runtime)?;
+            Ok(())
         });
         Ok(container
             .data_mut()
-            .entry::<Key<I, T>>()
+            .entry::<InitKey<Init>>()
             .insert_entry(value)
             .into_mut())
+    }
+
+    pub fn impl_init_injectable_get_runtime<Injectable, Runtime>(
+        container: AppContainer,
+    ) -> Result<&'static Runtime>
+    where
+        Injectable: 'static,
+        Runtime: DataItem,
+    {
+        container
+            .data()
+            .get::<RuntimeKey<Injectable, Runtime>>()
+            .ok_or_else(|| {
+                dijavu::Error::msg(format!(
+                    "could not get runtime data for {}: uninitialized",
+                    type_name::<Injectable>()
+                ))
+            })
     }
 }

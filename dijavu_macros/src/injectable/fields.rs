@@ -1,73 +1,87 @@
-use crate::injectable::DeriveInjectable;
+use std::rc::Rc;
+
+use crate::injectable::DeriveInjectableConfig;
 use crate::injectable::field::InjectableField;
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::quote;
 use syn::Fields;
 
 pub struct InjectableFields {
+    config: Rc<DeriveInjectableConfig>,
     fields: Vec<InjectableField>,
     named: bool,
 }
 
 impl InjectableFields {
-    pub fn from_fields(mode: &DeriveInjectable, fields: Fields) -> syn::Result<Self> {
-        Ok(InjectableFields {
+    pub fn from_fields(config: Rc<DeriveInjectableConfig>, fields: Fields) -> syn::Result<Self> {
+        Ok(Self {
             named: matches!(fields, Fields::Named(_)),
             fields: fields
                 .into_iter()
                 .enumerate()
-                .map(|(idx, field)| InjectableField::from_field(mode, idx, field))
+                .map(|(idx, field)| InjectableField::from_field(config.clone(), idx, field))
                 .collect::<syn::Result<_>>()?,
+            config,
         })
     }
 
-    pub fn init_fields(
+    pub fn field_decls(
         &self,
-        phantom_data: Option<&TokenStream>,
-        where_clause: impl ToTokens,
+        defs: impl Fn(&InjectableField) -> Option<TokenStream>,
     ) -> TokenStream {
-        let defs = self
-            .fields
-            .iter()
-            .filter_map(InjectableField::init_field_def);
-        let phantom_data = phantom_data.into_iter();
+        let defs = self.fields.iter().filter_map(defs);
+        let phantom_data = self
+            .config
+            .generics
+            .make_phantom_data()
+            .unwrap_or_else(|| quote!(std::marker::PhantomData<()>));
+        let where_clause = self.config.generics.split_for_impl().2;
         if self.named {
             quote!(#where_clause {
                 #(#defs,)*
-                #(_dijavu_pd: #phantom_data,)*
+                #[doc(hidden)]
+                _dijavu_pd: #phantom_data,
             })
         } else {
-            quote!((#(#defs,)* #(#phantom_data,)*) #where_clause;)
+            quote!((#(#defs,)* #[doc(hidden)] #phantom_data,) #where_clause;)
         }
     }
 
-    pub fn init_construct(&self, phantom_data: Option<&TokenStream>) -> TokenStream {
-        let phantom_data = phantom_data.map(|_| quote!(PhantomData)).into_iter();
-        let fields = self
-            .fields
-            .iter()
-            .filter_map(InjectableField::init_field_construct);
+    pub fn construct_value(
+        &self,
+        field_construct: impl Fn(&InjectableField) -> Option<TokenStream>,
+    ) -> TokenStream {
+        let fields = self.fields.iter().filter_map(field_construct);
         if self.named {
             quote!({
                 #(#fields,)*
-                #(_dijavu_pd: #phantom_data,)*
+                _dijavu_pd: std::marker::PhantomData,
             })
         } else {
             quote!((
                 #(#fields,)*
-                #(#phantom_data,)*
+                std::marker::PhantomData,
             ))
         }
     }
 
-    pub fn init_on_build(&self) -> TokenStream {
-        self.fields
-            .iter()
-            .filter_map(InjectableField::init_field_on_build)
-            .collect()
+    pub fn init_field_decls(&self) -> TokenStream {
+        self.field_decls(InjectableField::init_field_decl)
     }
 
-    pub fn construct_from_container(&self) -> TokenStream {
+    pub fn init_construct(&self) -> TokenStream {
+        self.construct_value(InjectableField::init_field_construct)
+    }
+
+    pub fn runtime_field_decls(&self) -> TokenStream {
+        self.field_decls(InjectableField::runtime_field_decl)
+    }
+
+    pub fn runtime_construct(&self) -> TokenStream {
+        self.construct_value(InjectableField::runtime_field_construct)
+    }
+
+    pub fn construct_from_container_and_runtime(&self) -> TokenStream {
         let fields = self
             .fields
             .iter()
