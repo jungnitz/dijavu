@@ -8,6 +8,9 @@ license.workspace = true
 readme.workspace = true
 repository.workspace = true
 
+[features]
+auto_init_default = ["dijavu_macros/auto_init_default"]
+
 [dependencies]
 rustc-hash = { workspace = true }
 ctor = { workspace = true }

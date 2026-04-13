@@ -11,3 +11,7 @@ After the initialization phase, the final and immutable app state is constructed
 application using a cheap copyable handle.
 This handle is created by leaking a data container to the `'static` lifetime, which makes this library only suitable for
 applications with a single initialization process during runtime.
+
+## Features
+
+- `auto_init_default`: Automatically initialize `InitInjectable` types when trait is implemented via the derive macro (e.g. `#[inject(init(auto))]` always set)

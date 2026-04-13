@@ -11,6 +11,9 @@ repository.workspace = true
 [lib]
 proc-macro = true
 
+[features]
+auto_init_default = []
+
 [dependencies]
 syn = { workspace = true }
 darling = { workspace = true }

@@ -60,7 +60,10 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
                 .ty
                 .unwrap_or_else(|| format_ident!("{}Init", input.ident)),
             runtime_struct_name: format_ident!("{}Runtime", input.ident),
+            #[cfg(not(feature = "auto_init_default"))]
             automatic: init.auto.is_present(),
+            #[cfg(feature = "auto_init_default")]
+            automatic: true,
             on_construct: init.on_construct,
             on_build: init.on_build,
             on_start: init.on_start,
