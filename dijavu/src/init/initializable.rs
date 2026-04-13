@@ -81,7 +81,13 @@ where
     }
 }
 
-impl<T: 'static> Deref for Value<T> {
+impl<T> Value<T> {
+    pub fn into_static_ref(self) -> &'static T {
+        self.0
+    }
+}
+
+impl<T> Deref for Value<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
