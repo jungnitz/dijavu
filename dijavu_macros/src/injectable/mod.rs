@@ -181,7 +181,7 @@ impl ToTokens for ImplInitInjectable<'_> {
 
                 fn get_init(
                     container: &mut dijavu::InitAppContainer
-                ) -> Result<Self::Init<'_>, Self::Error> {
+                ) -> Result<Self::Init<'_>, Self::InitError> {
                     dijavu::__private::impl_init_injectable_get_init::<Self, #init_struct_name<#ty_gen>, #runtime_struct_name::<#ty_gen>>(
                         container,
                         |container| {

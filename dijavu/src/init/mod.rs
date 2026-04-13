@@ -4,14 +4,12 @@ pub use self::container::InitAppContainer;
 mod initializable;
 pub use self::initializable::{Initializable, StartValue, Value};
 
-use crate::Injectable;
-
 /// A type that can be retrieved or constructed during initialization
 ///
 /// `InitInjectable` is the initialization-phase counterpart to [`Injectable`].
 /// It allows types to define how they are accessed or constructed from an
 /// [`InitAppContainer`].
-pub trait InitInjectable: Injectable {
+pub trait InitInjectable: Sized + 'static {
     /// Init-time injection error type
     type InitError;
     /// Init-time injected value
