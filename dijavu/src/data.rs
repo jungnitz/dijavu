@@ -1,6 +1,7 @@
 use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
 use std::collections::hash_map;
+use std::convert::Infallible;
 use std::marker::PhantomData;
 
 /// Container storing heterogeneous values via key types
@@ -94,6 +95,13 @@ where
                 entry.insert(item);
                 entry
             }
+        }
+    }
+
+    pub fn or_insert_with(self, f: impl FnOnce() -> K::Item) -> &'a mut K::Item {
+        match self.or_try_insert_with::<Infallible>(|| Ok(f())) {
+            Ok(ok) => ok,
+            Err(err) => match err {},
         }
     }
 
