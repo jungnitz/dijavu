@@ -4,6 +4,7 @@ use crate::data::DataItem;
 use crate::init::InitAppContainer;
 use crate::{AppContainer, AppContainerBuilder, Data, Result};
 use dijavu::{DataKey, Error};
+use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::ops::Deref;
 
@@ -176,3 +177,49 @@ impl<T> Clone for StartValue<T> {
 }
 
 impl<T> Copy for StartValue<T> {}
+
+/// A value that is simply dropped on build.
+///
+/// `StartValue<T>` allows modifying the `T` during initialization.
+/// The initial value is the default of `T`.
+/// During the build phase, the `T` is then dropped.
+///
+/// This type is useful when you want to take and use the value of `T` while building the
+/// `InitInitializable` that contains this value.
+pub struct DropValue<T>(PhantomData<T>);
+
+impl<T> Initializable for DropValue<T>
+where
+    T: Default,
+{
+    type Error = Infallible;
+    type Init = T;
+    type Runtime = ();
+
+    fn new_init_value(_container: &mut InitAppContainer) -> Result<Self::Init, Self::Error> {
+        Ok(T::default())
+    }
+
+    fn build_runtime_value(
+        _init: Self::Init,
+        _data: &mut Data,
+        _builder: &mut AppContainerBuilder,
+    ) -> Result<Self::Runtime> {
+        Ok(())
+    }
+
+    fn from_runtime_value(
+        _runtime: &'static Self::Runtime,
+        _container: AppContainer,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self(PhantomData))
+    }
+}
+
+impl<T> Clone for DropValue<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for DropValue<T> {}

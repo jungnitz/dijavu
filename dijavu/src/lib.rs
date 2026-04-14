@@ -14,7 +14,7 @@ mod error;
 pub use self::error::{Error, Result};
 
 mod init;
-pub use init::{InitAppContainer, InitInjectable, Initializable, StartValue, Value};
+pub use init::{DropValue, InitAppContainer, InitInjectable, Initializable, StartValue, Value};
 
 /// Global hooks into the application lifecycle
 pub mod hooks;

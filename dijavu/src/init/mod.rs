@@ -2,7 +2,7 @@ mod container;
 pub use self::container::InitAppContainer;
 
 mod initializable;
-pub use self::initializable::{Initializable, StartValue, Value};
+pub use self::initializable::{DropValue, Initializable, StartValue, Value};
 
 /// A type that can be retrieved or constructed during initialization
 ///
