@@ -223,3 +223,31 @@ impl<T> Clone for DropValue<T> {
 }
 
 impl<T> Copy for DropValue<T> {}
+
+impl<T> Initializable for T
+where
+    T: Copy + Default,
+{
+    type Error = Infallible;
+    type Init = T;
+    type Runtime = T;
+
+    fn new_init_value(_container: &mut InitAppContainer) -> Result<Self::Init, Self::Error> {
+        Ok(T::default())
+    }
+
+    fn build_runtime_value(
+        init: Self::Init,
+        _data: &mut Data,
+        _builder: &mut AppContainerBuilder,
+    ) -> Result<Self::Runtime> {
+        Ok(init)
+    }
+
+    fn from_runtime_value(
+        runtime: &'static Self::Runtime,
+        _container: AppContainer,
+    ) -> Result<Self, Self::Error> {
+        Ok(*runtime)
+    }
+}
