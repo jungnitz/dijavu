@@ -98,7 +98,7 @@ impl InjectableField {
             );
             quote!(
                 #(#ident:)* #ty::new_init_value(container)
-                    .map_err(|err| err.with_context(#error_msg))?
+                    .map_err(|err| dijavu::Error::from(err).with_context(#error_msg))?
             )
         })
     }
@@ -117,7 +117,7 @@ impl InjectableField {
             );
             quote!(
                 #(#ident:)* #ty::build_runtime_value(init.#accessor, data, builder)
-                    .map_err(|err| err.with_context(#error_msg))?
+                    .map_err(|err| dijavu::Error::from(err).with_context(#error_msg))?
             )
         })
     }
