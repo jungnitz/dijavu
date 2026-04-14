@@ -23,7 +23,7 @@ use std::ops::Deref;
 /// dijavu provides some simple, but useful implementations of the trait out of the box.
 /// See e.g. [`Value`] or [`StartValue`] for examples.
 pub trait Initializable: Sized {
-    type Error;
+    type Error: Into<dijavu::Error>;
     /// The type of the data that is modifiable during initialization
     type Init;
     /// The runtime state
@@ -40,13 +40,23 @@ pub trait Initializable: Sized {
     ) -> Result<Self::Runtime>;
 
     /// Retrieves the value from the [`AppContainer`] at runtime.
-    ///
-    /// This must match what was inserted during [`on_build`](Self::on_build).
     fn from_runtime_value(
         runtime: &'static Self::Runtime,
         container: AppContainer,
     ) -> Result<Self, Self::Error>;
 }
+
+/// Derive [`Initializable`] for a struct with initializable fields.
+///
+/// # Example
+/// ```
+/// # use dijavu::{Value, Initializable};
+/// #[derive(Initializable)]
+/// struct Test {
+///    str: Value<String>,
+/// }
+/// ```
+pub use dijavu_macros::Initializable;
 
 /// A simple, initializable value
 ///
