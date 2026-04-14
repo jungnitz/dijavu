@@ -91,10 +91,11 @@ pub struct AppContainerBuilder {
     start_fns: Vec<
         Box<
             dyn for<'a> FnOnce(
-                AppContainer,
-                &'a mut Data,
-            )
-                -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>,
+                    AppContainer,
+                    &'a mut Data,
+                )
+                    -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>
+                + Send,
         >,
     >,
 }
@@ -140,7 +141,7 @@ impl AppContainerBuilder {
     /// Adds a start function to be executed in [`build`](Self::build).
     pub fn add_start_fn(
         &mut self,
-        func: impl FnOnce(AppContainer, &mut Data) -> Result<()> + 'static,
+        func: impl FnOnce(AppContainer, &mut Data) -> Result<()> + Send + 'static,
     ) {
         self.add_async_start_fn(move |container, data| {
             let result = func(container, data);
@@ -155,6 +156,7 @@ impl AppContainerBuilder {
             AppContainer,
             &'a mut Data,
         ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>
+        + Send
         + 'static,
     ) {
         self.start_fns.push(Box::new(func));

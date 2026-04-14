@@ -24,6 +24,7 @@ pub struct InitConfig {
 
     on_construct: Option<Expr>,
     on_build: Option<Expr>,
+    on_build_async: Option<Expr>,
     on_start: Option<Expr>,
     on_start_async: Option<Expr>,
 }
@@ -41,6 +42,7 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
         auto: Flag,
         on_construct: Option<Expr>,
         on_build: Option<Expr>,
+        on_build_async: Option<Expr>,
         on_start: Option<Expr>,
         on_start_async: Option<Expr>,
         #[darling(rename = "type")]
@@ -66,6 +68,7 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
             automatic: true,
             on_construct: init.on_construct,
             on_build: init.on_build,
+            on_build_async: init.on_build_async,
             on_start: init.on_start,
             on_start_async: init.on_start_async,
         }),
@@ -148,11 +151,17 @@ impl ToTokens for ImplInitInjectable<'_> {
                 res?;
             })
         });
-        let on_build = init.on_build.as_ref().map(|on_build| {
-            quote!({
-                let res: Result<(), dijavu::Error> = (#on_build)(&mut init, &mut *data, &mut *builder);
-                res?;
-            })
+        let on_build = init.on_build.iter();
+        let on_build_async = init.on_build_async.iter();
+        let on_build = quote!({
+            #(
+            let res: Result<(), dijavu::Error> = (#on_build)(&mut init, &mut *data, &mut *builder);
+            res?;
+            )*
+            #(
+            let res: Result<(), dijavu::Error> = (#on_build_async)(&mut init, &mut *data, &mut *builder).await;
+            res?;
+            )*
         });
         let on_start = init.on_start.iter();
         let on_start_async = init.on_start_async.iter();
@@ -192,9 +201,11 @@ impl ToTokens for ImplInitInjectable<'_> {
                             Ok(#init_struct_name::<#ty_gen> #init_construct)
                         },
                         |mut init, data, builder| {
-                            #on_build
-                            #on_start
-                            Ok(#runtime_struct_name::<#ty_gen> #runtime_construct)
+                            Box::pin(async move {
+                                #on_build
+                                #on_start
+                                Ok(#runtime_struct_name::<#ty_gen> #runtime_construct)
+                            })
                         }
                     )
                 }

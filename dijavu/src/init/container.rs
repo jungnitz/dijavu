@@ -1,5 +1,6 @@
 use crate::container::AppContainerBuilder;
 use crate::{AppContainer, Data, Result, hooks, init::InitInjectable};
+use std::future;
 use std::mem::take;
 use std::pin::Pin;
 
@@ -45,7 +46,15 @@ use std::pin::Pin;
 pub struct InitAppContainer {
     data: Data,
     #[expect(clippy::type_complexity)]
-    on_build: Vec<Box<dyn FnOnce(&mut Data, &mut AppContainerBuilder) -> Result<()>>>,
+    on_build: Vec<
+        Box<
+            dyn for<'a> FnOnce(
+                &'a mut Data,
+                &'a mut AppContainerBuilder,
+            )
+                -> Pin<Box<dyn Future<Output = Result<()>> + 'a + Send>>,
+        >,
+    >,
 }
 
 impl InitAppContainer {
@@ -75,6 +84,24 @@ impl InitAppContainer {
         &mut self,
         hook: impl FnOnce(&mut Data, &mut AppContainerBuilder) -> Result<()> + 'static,
     ) {
+        self.on_build_async(|data, container| {
+            let result = hook(data, container);
+            Box::pin(future::ready(result))
+        })
+    }
+
+    /// Registers an asynchronous build hook.
+    ///
+    /// Build hooks are executed during [`build`](Self::build) and are responsible for transforming
+    /// initialization data into runtime data.
+    pub fn on_build_async(
+        &mut self,
+        hook: impl for<'a> FnOnce(
+            &'a mut Data,
+            &'a mut AppContainerBuilder,
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a + Send>>
+        + 'static,
+    ) {
         self.on_build.push(Box::new(hook));
     }
 
@@ -84,7 +111,7 @@ impl InitAppContainer {
     /// constructed and all start data was added by the build hooks.
     pub fn on_start(
         &mut self,
-        hook: impl for<'a> FnOnce(AppContainer, &'a mut Data) -> Result<()> + 'static,
+        hook: impl for<'a> FnOnce(AppContainer, &'a mut Data) -> Result<()> + Send + 'static,
     ) {
         self.on_build(move |_, builder| {
             builder.add_start_fn(hook);
@@ -102,6 +129,7 @@ impl InitAppContainer {
             AppContainer,
             &'a mut Data,
         ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>
+        + Send
         + 'static,
     ) {
         self.on_build(move |_, builder| {
@@ -115,7 +143,7 @@ impl InitAppContainer {
         let mut builder = AppContainerBuilder::default();
         hooks::run_global_before_build_hooks(&mut self)?;
         for hook in take(&mut self.on_build) {
-            hook(&mut self.data, &mut builder)?;
+            hook(&mut self.data, &mut builder).await?;
         }
         builder.build().await
     }

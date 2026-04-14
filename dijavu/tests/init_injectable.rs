@@ -107,6 +107,9 @@ async fn macro_hooks() -> Result<()> {
     }, on_build = |value: &mut TInit, _, _| {
         value.0 = 42;
         Ok(())
+    }, on_build_async = async |value: &mut TInit, _, _| {
+        value.1 = 24;
+        Ok(())
     }, on_start = |_: AppContainer, _: &mut Data| {
         ON_START.store(true, Ordering::SeqCst);
         Ok(())
@@ -114,7 +117,7 @@ async fn macro_hooks() -> Result<()> {
         ON_START_ASYNC.store(true, Ordering::SeqCst);
         Ok(())
     }))]
-    pub struct T(#[inject(init)] Value<i32>);
+    pub struct T(#[inject(init)] Value<i32>, #[inject(init)] Value<i32>);
 
     ON_START.store(false, Ordering::SeqCst);
     ON_START_ASYNC.store(false, Ordering::SeqCst);
@@ -128,6 +131,7 @@ async fn macro_hooks() -> Result<()> {
     let container = container.build().await?;
     assert_eq!(get_static_states(), (true, true));
     assert_eq!(*container.get::<T>().unwrap().0, 42);
+    assert_eq!(*container.get::<T>().unwrap().1, 24);
 
     Ok(())
 }

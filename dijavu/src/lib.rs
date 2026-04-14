@@ -84,7 +84,8 @@ pub use self::injectable::{Injectable, ScopeInjectable};
 /// | `init(auto)`        | Always initialize during build, even when not explicitly accessed | disabled |
 /// | `init(type = Name`) | Name of generated init struct                    | `<StructName>Init`   |
 /// | `init(on_construct = <expr>`) | Runs function `<expr>` with argument `&mut InitAppContainer` on first construction of the initialization value for an `InitAppContainer` | - |
-/// | `init(on_build = <expr>`) | Runs function `<expr>` with arguments `&mut <InitStruct>, &mut Data, &mut AppContainerBuilder` where the second argument contains the initialization state | - |
+/// | `init(on_build = <expr>`) | Runs function `<expr>` with arguments `&mut <InitStruct>, &mut Data, &mut AppContainerBuilder` on build | - |
+/// | `init(on_build_async = <expr>`) | Runs async function `<expr>` with arguments `&mut <InitStruct>, &mut Data, &mut AppContainerBuilder` on build | - |
 /// | `init(on_start = <expr>`) | Runs function `<expr>` with arguments `AppContainer, &mut Data` on start (i.e. right after building the `AppContainer`) with the start data | - |
 /// | `init(on_start_async = <expr>`) | Runs async function `<expr>` with arguments `AppContainer, &mut Data` on start (i.e. right after building the `AppContainer`) with the start data | - |
 ///
@@ -135,7 +136,7 @@ pub mod __private {
         AppContainer, AppContainerBuilder, Data, DataKey, InitAppContainer, InitInjectable, Result,
         data::DataItem,
     };
-    use std::{any::type_name, marker::PhantomData};
+    use std::{any::type_name, marker::PhantomData, pin::Pin};
 
     pub use ::ctor;
 
@@ -151,7 +152,13 @@ pub mod __private {
     pub fn impl_init_injectable_get_init<'a, Injectable, Init, Runtime>(
         container: &'a mut InitAppContainer,
         construct: impl FnOnce(&mut InitAppContainer) -> Result<Init>,
-        into_runtime: impl FnOnce(Init, &mut Data, &mut AppContainerBuilder) -> Result<Runtime>
+        into_runtime: impl for<'f> FnOnce(
+            Init,
+            &'f mut Data,
+            &'f mut AppContainerBuilder,
+        )
+            -> Pin<Box<dyn Future<Output = Result<Runtime>> + Send + 'f>>
+        + Send
         + 'static,
     ) -> Result<&'a mut Init>
     where
@@ -169,11 +176,13 @@ pub mod __private {
         }
 
         let value = construct(container)?;
-        container.on_build(move |data, builder| {
-            let value = data.remove::<InitKey<Init>>().unwrap();
-            let runtime = into_runtime(value, data, builder)?;
-            builder.insert_app_data::<RuntimeKey<Injectable, Runtime>>(runtime)?;
-            Ok(())
+        container.on_build_async(move |data, builder| {
+            Box::pin(async move {
+                let value = data.remove::<InitKey<Init>>().unwrap();
+                let runtime = into_runtime(value, data, builder).await?;
+                builder.insert_app_data::<RuntimeKey<Injectable, Runtime>>(runtime)?;
+                Ok(())
+            })
         });
         Ok(container
             .data_mut()
