@@ -19,6 +19,7 @@ struct DeriveInjectableConfig {
 
 pub struct InitConfig {
     struct_name: Ident,
+    hide_struct: bool,
     runtime_struct_name: Ident,
     automatic: bool,
 
@@ -47,6 +48,7 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
         on_start_async: Option<Expr>,
         #[darling(rename = "type")]
         ty: Option<Ident>,
+        hide: Flag,
     }
 
     let mut meta = Meta::from_derive_input(&input)?;
@@ -61,6 +63,7 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
             struct_name: init
                 .ty
                 .unwrap_or_else(|| format_ident!("{}Init", input.ident)),
+            hide_struct: init.hide.is_present(),
             runtime_struct_name: format_ident!("{}Runtime", input.ident),
             #[cfg(not(feature = "auto_init_default"))]
             automatic: init.auto.is_present(),
@@ -80,12 +83,23 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
     let fields = InjectableFields::from_fields(config.clone(), struct_data.fields)?;
     let fields = &fields;
 
-    let init_struct = config.init.as_ref().map(|init| DerivedStruct {
-        config: config.clone(),
-        fields,
-        name: &init.struct_name,
-        decls: InjectableFields::init_field_decls,
-    });
+    let (init_struct, init_struct_hidden) = config
+        .init
+        .as_ref()
+        .map(|init| {
+            let def = DerivedStruct {
+                config: config.clone(),
+                fields,
+                name: &init.struct_name,
+                decls: InjectableFields::init_field_decls,
+            };
+            if init.hide_struct {
+                (None, Some(def))
+            } else {
+                (Some(def), None)
+            }
+        })
+        .unwrap_or_default();
     let runtime_struct = config.init.as_ref().map(|init| DerivedStruct {
         config: config.clone(),
         fields,
@@ -104,6 +118,7 @@ pub fn derive_injectable(input: DeriveInput, init: bool) -> syn::Result<TokenStr
     Ok(quote! {
         #init_struct
         const _: () = {
+            #init_struct_hidden
             #runtime_struct
             #impl_init_injectable
             #impl_injectable
