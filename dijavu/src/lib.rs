@@ -131,11 +131,30 @@ pub use dijavu_macros::InitInjectable;
 /// ```
 pub use dijavu_macros::Injectable;
 
+use crate::data::define_data_wrapper;
+
+define_data_wrapper!(
+    /// Data that is assembled during the initialization phase
+    pub InitData;
+);
+define_data_wrapper!(
+    /// Data that is assembled during the build phase and is available in the start hooks
+    pub BuildData;
+);
+define_data_wrapper!(
+    /// Data that is assembled during the build phase and is available from the [`AppContainer`]
+    pub RuntimeData;
+);
+define_data_wrapper!(
+    /// Data that is local to a [`ScopeContainer`]
+    pub ScopeData;
+);
+
 #[doc(hidden)]
 pub mod __private {
     use crate::{
-        AppContainer, AppContainerBuilder, Data, DataKey, InitAppContainer, InitInjectable, Result,
-        data::DataItem,
+        AppContainer, AppContainerBuilder, DataKey, InitAppContainer, InitData, InitInjectable,
+        Result, data::DataItem,
     };
     use std::{any::type_name, marker::PhantomData, pin::Pin};
 
@@ -155,7 +174,7 @@ pub mod __private {
         construct: impl FnOnce(&mut InitAppContainer) -> Result<Init>,
         into_runtime: impl for<'f> FnOnce(
             Init,
-            &'f mut Data,
+            &'f mut InitData,
             &'f mut AppContainerBuilder,
         )
             -> Pin<Box<dyn Future<Output = Result<Runtime>> + Send + 'f>>

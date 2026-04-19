@@ -2,7 +2,7 @@
 use crate::InitInjectable;
 use crate::data::DataItem;
 use crate::init::InitAppContainer;
-use crate::{AppContainer, AppContainerBuilder, Data, Result};
+use crate::{AppContainer, AppContainerBuilder, Data, InitData, Result};
 use dijavu::{DataKey, Error};
 use std::convert::Infallible;
 use std::marker::PhantomData;
@@ -36,7 +36,7 @@ pub trait Initializable: Sized {
     /// Consumes the initialization value and constructs the runtime data.
     fn build_runtime_value(
         init: Self::Init,
-        data: &mut Data,
+        data: &mut InitData,
         builder: &mut AppContainerBuilder,
     ) -> Result<Self::Runtime>;
 
@@ -81,7 +81,7 @@ where
 
     fn build_runtime_value(
         init: Self::Init,
-        _data: &mut Data,
+        _data: &mut InitData,
         _builder: &mut AppContainerBuilder,
     ) -> Result<T> {
         Ok(init)
@@ -142,7 +142,7 @@ where
 
     fn build_runtime_value(
         init: Self::Init,
-        _data: &mut Data,
+        _data: &mut InitData,
         builder: &mut AppContainerBuilder,
     ) -> Result<()> {
         builder.insert_start_data::<StartValueKey<T>>(init)?;
@@ -202,7 +202,7 @@ where
 
     fn build_runtime_value(
         _init: Self::Init,
-        _data: &mut Data,
+        _data: &mut InitData,
         _builder: &mut AppContainerBuilder,
     ) -> Result<Self::Runtime> {
         Ok(())
@@ -238,7 +238,7 @@ where
 
     fn build_runtime_value(
         init: Self::Init,
-        _data: &mut Data,
+        _data: &mut InitData,
         _builder: &mut AppContainerBuilder,
     ) -> Result<Self::Runtime> {
         Ok(init)

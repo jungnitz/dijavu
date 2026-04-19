@@ -1,13 +1,14 @@
 use std::pin::Pin;
 
-use crate::data::{Data, DataEntry};
+use crate::data::DataEntry;
 use crate::injectable::{Injectable, ScopeInjectable};
-use crate::{DataKey, Error, Result};
+use crate::{BuildData, DataKey, Error, Result, RuntimeData, ScopeData};
 
 /// Immutable handle to application-wide runtime data.
 ///
 /// `AppContainer` is the central access point for dependency injection during the runtime phase.
-/// It is a thin wrapper around a [`&'static Data`](Data) instance constructed during initialization.
+/// It is a thin wrapper around a [`&'static Data`](RuntimeData) instance constructed during
+/// initialization.
 ///
 /// ## Usage
 ///
@@ -20,8 +21,8 @@ use crate::{DataKey, Error, Result};
 /// # }
 /// ```
 ///
-/// You can also access the underlying [`Data`] directly if needed, usually in the implementations
-/// of [`Injectable`]:
+/// You can also access the underlying [`RuntimeData`] directly if needed, usually in the
+/// implementations of [`Injectable`]:
 ///
 /// ```rust
 /// # use dijavu::{Data, AppContainer};
@@ -34,18 +35,18 @@ use crate::{DataKey, Error, Result};
 /// See [`InitAppContainer`](crate::InitAppContainer) and [`InitInjectable`](crate::InitInjectable)
 /// module for details on how to construct an `AppContainer`.
 #[derive(Copy, Clone)]
-pub struct AppContainer(&'static Data);
+pub struct AppContainer(&'static RuntimeData);
 
 impl AppContainer {
     /// Creates an [`AppContainer`] with no data.
     pub fn empty() -> Self {
-        Self(Box::leak(Box::new(Data::default())))
+        Self(Box::leak(Box::new(RuntimeData::default())))
     }
 
-    /// Returns the underlying [`Data`] storage.
+    /// Returns the underlying [`RuntimeData`] storage.
     ///
     /// This is primarily intended for low-level access.
-    pub fn data(self) -> &'static Data {
+    pub fn data(self) -> &'static RuntimeData {
         self.0
     }
 
@@ -85,14 +86,14 @@ impl AppContainer {
 /// - use one-time artifacts in the start functions (e.g. routers, startup handles)
 #[derive(Default)]
 pub struct AppContainerBuilder {
-    app_data: Data,
-    start_data: Data,
+    app_data: RuntimeData,
+    start_data: BuildData,
     #[expect(clippy::type_complexity)]
     start_fns: Vec<
         Box<
             dyn for<'a> FnOnce(
                     AppContainer,
-                    &'a mut Data,
+                    &'a mut BuildData,
                 )
                     -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>
                 + Send,
@@ -141,7 +142,7 @@ impl AppContainerBuilder {
     /// Adds a start function to be executed in [`build`](Self::build).
     pub fn add_start_fn(
         &mut self,
-        func: impl FnOnce(AppContainer, &mut Data) -> Result<()> + Send + 'static,
+        func: impl FnOnce(AppContainer, &mut BuildData) -> Result<()> + Send + 'static,
     ) {
         self.add_async_start_fn(move |container, data| {
             let result = func(container, data);
@@ -154,7 +155,7 @@ impl AppContainerBuilder {
         &mut self,
         func: impl for<'a> FnOnce(
             AppContainer,
-            &'a mut Data,
+            &'a mut BuildData,
         ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>
         + Send
         + 'static,
@@ -168,7 +169,7 @@ impl AppContainerBuilder {
     /// [`AppContainer`] with runtime data.
     /// The runtime data is leaked to `'static`, making the resulting [`AppContainer`] globally
     /// usable for the lifetime of the application.
-    pub async fn build(mut self) -> dijavu::Result<AppContainer> {
+    pub async fn build(mut self) -> Result<AppContainer> {
         let container = AppContainer(Box::leak(Box::new(self.app_data)));
         for start_fn in self.start_fns {
             start_fn(container, &mut self.start_data).await?
@@ -180,11 +181,11 @@ impl AppContainerBuilder {
 /// Container supplementing an [`AppContainer`] with additional, short-lived data.
 ///
 /// `ScopeContainer` extends [`AppContainer`] with a mutable, scope-local
-/// [`Data`] store. It is intended for per-request / per-task state while still
+/// [`ScopeData`] store. It is intended for per-request / per-task state while still
 /// providing access to global application data.
 pub struct ScopeContainer {
     app: AppContainer,
-    data: Data,
+    data: ScopeData,
 }
 
 impl ScopeContainer {
@@ -192,7 +193,7 @@ impl ScopeContainer {
     pub fn new(container: AppContainer) -> Self {
         Self {
             app: container,
-            data: Data::default(),
+            data: ScopeData::default(),
         }
     }
 
@@ -201,13 +202,13 @@ impl ScopeContainer {
         self.app
     }
 
-    /// Returns mutable access to the scoped [`Data`].
-    pub fn scope_data_mut(&mut self) -> &mut Data {
+    /// Returns mutable access to the [`ScopeData`].
+    pub fn scope_data_mut(&mut self) -> &mut ScopeData {
         &mut self.data
     }
 
-    /// Returns shared access to the scoped [`Data`].
-    pub fn scope_data(&self) -> &Data {
+    /// Returns shared access to the [`ScopeData`].
+    pub fn scope_data(&self) -> &ScopeData {
         &self.data
     }
 

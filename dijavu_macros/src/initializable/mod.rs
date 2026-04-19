@@ -77,7 +77,7 @@ pub fn derive_initializable(input: DeriveInput) -> Result<TokenStream, syn::Erro
 
                 fn build_runtime_value(
                     init: Self::Init,
-                    data: &mut dijavu::Data,
+                    data: &mut dijavu::InitData,
                     builder: &mut dijavu::AppContainerBuilder
                 ) -> dijavu::Result<Self::Runtime> {
                     Ok(#build_runtime_value)

@@ -182,7 +182,7 @@ impl ToTokens for ImplInitInjectable<'_> {
         let on_start_async = init.on_start_async.iter();
         let on_start = quote!({
             #( builder.add_start_fn(#on_start); )*
-            #( builder.add_async_start_fn(|__dijavu_container: dijavu::AppContainer, __dijavu_data: &mut dijavu::Data| {
+            #( builder.add_async_start_fn(|__dijavu_container: dijavu::AppContainer, __dijavu_data: &mut dijavu::BuildData| {
                 Box::pin(async move { (#on_start_async)(__dijavu_container, __dijavu_data).await })
             }); )*
         });

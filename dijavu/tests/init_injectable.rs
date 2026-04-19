@@ -1,6 +1,7 @@
+use dijavu::BuildData;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use dijavu::{AppContainer, Data, InitAppContainer, Result, StartValue, Value};
+use dijavu::{AppContainer, InitAppContainer, Result, StartValue, Value};
 use dijavu_macros::InitInjectable;
 
 #[derive(InitInjectable)]
@@ -110,10 +111,10 @@ async fn macro_hooks() -> Result<()> {
     }, on_build_async = async |value: &mut TInit, _, _| {
         value.1 = 24;
         Ok(())
-    }, on_start = |_: AppContainer, _: &mut Data| {
+    }, on_start = |_: AppContainer, _: &mut BuildData| {
         ON_START.store(true, Ordering::SeqCst);
         Ok(())
-    }, on_start_async = async |_: AppContainer, _: &mut Data| {
+    }, on_start_async = async |_: AppContainer, _: &mut BuildData| {
         ON_START_ASYNC.store(true, Ordering::SeqCst);
         Ok(())
     }))]

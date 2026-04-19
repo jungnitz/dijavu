@@ -1,5 +1,5 @@
 use crate::container::AppContainerBuilder;
-use crate::{AppContainer, Data, Result, hooks, init::InitInjectable};
+use crate::{AppContainer, BuildData, InitData, Result, hooks, init::InitInjectable};
 use std::future;
 use std::mem::take;
 use std::pin::Pin;
@@ -16,12 +16,12 @@ use std::pin::Pin;
 ///
 /// ## Data access
 ///
-/// You can access the underlying [`Data`] directly:
+/// You can access the underlying [`InitData`] directly:
 ///
 /// ```rust
-/// # use dijavu::{Data, InitAppContainer};
+/// # use dijavu::{InitData, InitAppContainer};
 /// # let mut container = InitAppContainer::default();
-/// let data: &mut Data = container.data_mut();
+/// let data: &mut InitData = container.data_mut();
 /// ```
 ///
 /// Or use [`InitInjectable`] for structured access:
@@ -44,12 +44,12 @@ use std::pin::Pin;
 /// ```
 #[derive(Default)]
 pub struct InitAppContainer {
-    data: Data,
+    data: InitData,
     #[expect(clippy::type_complexity)]
     on_build: Vec<
         Box<
             dyn for<'a> FnOnce(
-                &'a mut Data,
+                &'a mut InitData,
                 &'a mut AppContainerBuilder,
             )
                 -> Pin<Box<dyn Future<Output = Result<()>> + 'a + Send>>,
@@ -58,11 +58,11 @@ pub struct InitAppContainer {
 }
 
 impl InitAppContainer {
-    /// Returns mutable access to the underlying initialization [`Data`].
+    /// Returns mutable access to the underlying initialization [`InitData`].
     ///
     /// This is primarily intended for low-level access in [`InitInjectable`] instances or to insert
     /// external data at application startup.
-    pub fn data_mut(&mut self) -> &mut Data {
+    pub fn data_mut(&mut self) -> &mut InitData {
         &mut self.data
     }
 
@@ -82,7 +82,7 @@ impl InitAppContainer {
     /// initialization data into runtime data.
     pub fn on_build(
         &mut self,
-        hook: impl FnOnce(&mut Data, &mut AppContainerBuilder) -> Result<()> + 'static,
+        hook: impl FnOnce(&mut InitData, &mut AppContainerBuilder) -> Result<()> + 'static,
     ) {
         self.on_build_async(|data, container| {
             let result = hook(data, container);
@@ -97,7 +97,7 @@ impl InitAppContainer {
     pub fn on_build_async(
         &mut self,
         hook: impl for<'a> FnOnce(
-            &'a mut Data,
+            &'a mut InitData,
             &'a mut AppContainerBuilder,
         ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a + Send>>
         + 'static,
@@ -111,7 +111,7 @@ impl InitAppContainer {
     /// constructed and all start data was added by the build hooks.
     pub fn on_start(
         &mut self,
-        hook: impl for<'a> FnOnce(AppContainer, &'a mut Data) -> Result<()> + Send + 'static,
+        hook: impl for<'a> FnOnce(AppContainer, &'a mut BuildData) -> Result<()> + Send + 'static,
     ) {
         self.on_build(move |_, builder| {
             builder.add_start_fn(hook);
@@ -127,7 +127,7 @@ impl InitAppContainer {
         &mut self,
         hook: impl for<'a> FnOnce(
             AppContainer,
-            &'a mut Data,
+            &'a mut BuildData,
         ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>
         + Send
         + 'static,

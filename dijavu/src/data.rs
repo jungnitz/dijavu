@@ -214,6 +214,33 @@ pub trait DataItem: Any + Send + Sync {}
 
 impl<T: Any + Send + Sync> DataItem for T {}
 
+macro_rules! define_data_wrapper {
+    (
+        $(#[doc = $doc:literal])*
+        $vis:vis $name:ident;
+    ) => {
+        $(#[doc = $doc])*
+        #[derive(Default)]
+        pub struct $name(crate::data::Data);
+
+        impl std::ops::Deref for $name {
+            type Target = crate::data::Data;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
+        impl std::ops::DerefMut for $name {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+    };
+}
+
+pub(crate) use define_data_wrapper;
+
 #[cfg(test)]
 mod tests {
     use super::*;
