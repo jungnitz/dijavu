@@ -1,8 +1,6 @@
-#[cfg(doc)]
-use crate::InitInjectable;
 use crate::data::DataItem;
 use crate::init::InitAppContainer;
-use crate::{AppContainer, AppContainerBuilder, Data, InitData, Result};
+use crate::{AppContainer, AppContainerBuilder, Data, InitData, InitInjectable, Result};
 use dijavu::{DataKey, Error};
 use std::convert::Infallible;
 use std::marker::PhantomData;
@@ -223,6 +221,43 @@ impl<T> Clone for DropValue<T> {
 }
 
 impl<T> Copy for DropValue<T> {}
+
+/// Creates a dependency on another [`InitInjectable`] when used as an [`Initializable`]
+///
+/// This type may be used in combination with the `InitInjectable` derive macro on a type `I`  to
+/// ensure that `T` is always initialized before `I` is initialized.
+/// Hence, the build and start hooks registered during initialization of `T` are executed before
+/// those of `I`.
+pub struct Dependency<T>(PhantomData<fn() -> T>);
+
+impl<T> Initializable for Dependency<T>
+where
+    T: InitInjectable,
+{
+    type Error = T::InitError;
+    type Init = Self;
+    type Runtime = ();
+
+    fn new_init_value(container: &mut InitAppContainer) -> Result<Self::Init, Self::Error> {
+        T::get_init(container)?;
+        Ok(Dependency(PhantomData))
+    }
+
+    fn build_runtime_value(
+        _init: Self::Init,
+        _data: &mut InitData,
+        _builder: &mut AppContainerBuilder,
+    ) -> Result<Self::Runtime> {
+        Ok(())
+    }
+
+    fn from_runtime_value(
+        _runtime: &'static Self::Runtime,
+        _container: AppContainer,
+    ) -> Result<Self, Self::Error> {
+        Ok(Dependency(PhantomData))
+    }
+}
 
 impl<T> Initializable for T
 where

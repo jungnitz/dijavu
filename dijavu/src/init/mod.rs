@@ -3,7 +3,7 @@ mod container;
 pub use self::container::InitAppContainer;
 
 mod initializable;
-pub use self::initializable::{DropValue, Initializable, StartValue, Value};
+pub use self::initializable::{Dependency, DropValue, Initializable, StartValue, Value};
 
 /// A type that can be retrieved or constructed during initialization
 ///
@@ -12,7 +12,7 @@ pub use self::initializable::{DropValue, Initializable, StartValue, Value};
 /// [`InitAppContainer`].
 pub trait InitInjectable: Sized + 'static {
     /// Init-time injection error type
-    type InitError;
+    type InitError: Into<dijavu::Error>;
     /// Init-time injected value
     ///
     /// This type may borrow mutably from a [`InitAppContainer`] with lifetime `'a`.
