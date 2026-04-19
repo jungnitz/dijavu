@@ -133,14 +133,14 @@ impl InjectableField {
         match self.source {
             InjectableFieldSource::Injectable => {
                 quote!(
-                    #(#ident:)* <#ty as dijavu::Injectable>::get(container)
+                    #(#ident:)* <#ty as dijavu::Injectable>::get(data)
                         .map_err(|err| dijavu::Error::from(err).with_context(#error_msg))?
                 )
             }
             InjectableFieldSource::InitValue => {
                 let accessor = self.accessor();
                 quote!(
-                    #(#ident:)* <#ty as dijavu::Initializable>::from_runtime_value(&runtime.#accessor, container)
+                    #(#ident:)* <#ty as dijavu::Initializable>::from_runtime_value(&runtime.#accessor, data)
                         .map_err(|err| dijavu::Error::from(err).with_context(#error_msg))?
                 )
             }

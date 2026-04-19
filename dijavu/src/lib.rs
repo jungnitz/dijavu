@@ -124,7 +124,7 @@ pub use dijavu_macros::InitInjectable;
 /// impl Injectable for Service {
 ///     type Error = Error;
 ///
-///     fn get(container: AppContainer) -> Result<Self, Self::Error> {
+///     fn get(container: &RuntimeData) -> Result<Self, Self::Error> {
 ///         Ok(Self {
 ///             dependency: <() as Injectable>::get(container)?,
 ///         })
@@ -133,7 +133,7 @@ pub use dijavu_macros::InitInjectable;
 /// ```
 pub use dijavu_macros::Injectable;
 
-use crate::data::define_data_wrapper;
+use crate::data::{LeakedValues, define_data_wrapper};
 
 define_data_wrapper!(
     /// Data that is assembled during the initialization phase
@@ -145,7 +145,7 @@ define_data_wrapper!(
 );
 define_data_wrapper!(
     /// Data that is assembled during the build phase and is available from the [`AppContainer`]
-    pub RuntimeData;
+    pub RuntimeData -> LeakedValues;
 );
 define_data_wrapper!(
     /// Data that is local to a [`ScopeContainer`]
@@ -155,8 +155,8 @@ define_data_wrapper!(
 #[doc(hidden)]
 pub mod __private {
     use crate::{
-        AppContainer, AppContainerBuilder, DataKey, InitAppContainer, InitData, InitInjectable,
-        Result, data::DataItem,
+        AppContainerBuilder, DataKey, InitAppContainer, InitData, InitInjectable, Result,
+        RuntimeData, data::DataValue,
     };
     use std::{any::type_name, marker::PhantomData, pin::Pin};
 
@@ -166,7 +166,7 @@ pub mod __private {
 
     impl<Injectable: 'static, Runtime> DataKey for RuntimeKey<Injectable, Runtime>
     where
-        Runtime: DataItem,
+        Runtime: DataValue,
     {
         type Item = Runtime;
     }
@@ -185,11 +185,11 @@ pub mod __private {
     ) -> Result<&'a mut Init>
     where
         Injectable: for<'i> InitInjectable<Init<'i> = &'i mut Init>,
-        Init: DataItem,
-        Runtime: DataItem,
+        Init: DataValue,
+        Runtime: DataValue,
     {
         struct InitKey<T>(PhantomData<T>);
-        impl<T: DataItem> DataKey for InitKey<T> {
+        impl<T: DataValue> DataKey for InitKey<T> {
             type Item = T;
         }
 
@@ -214,15 +214,13 @@ pub mod __private {
     }
 
     pub fn impl_init_injectable_get_runtime<Injectable, Runtime>(
-        container: AppContainer,
+        data: &RuntimeData,
     ) -> Result<&'static Runtime>
     where
         Injectable: 'static,
-        Runtime: DataItem,
+        Runtime: DataValue,
     {
-        container
-            .data()
-            .get::<RuntimeKey<Injectable, Runtime>>()
+        data.get::<RuntimeKey<Injectable, Runtime>>()
             .ok_or_else(|| {
                 dijavu::Error::msg(format!(
                     "could not get runtime data for {}: uninitialized",

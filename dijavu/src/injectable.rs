@@ -1,4 +1,7 @@
-use crate::container::{AppContainer, ScopeContainer};
+#[cfg(doc)]
+use crate::AppContainer;
+use crate::RuntimeData;
+use crate::container::ScopeContainer;
 use std::{convert::Infallible, marker::PhantomData};
 
 /// A type that can be constructed from an [`AppContainer`]
@@ -9,8 +12,8 @@ pub trait Injectable: Sized + 'static {
     /// The error type returned if injection fails.
     type Error;
 
-    /// Retrieves or constructs `Self` from the [`AppContainer`].
-    fn get(container: AppContainer) -> Result<Self, Self::Error>;
+    /// Retrieves or constructs `Self` from the [`RuntimeData`].
+    fn get(data: &RuntimeData) -> Result<Self, Self::Error>;
 }
 
 /// A type that can be constructed from a [`ScopeContainer`]
@@ -31,14 +34,14 @@ where
     type Error = I::Error;
 
     fn get(container: &'a mut ScopeContainer) -> Result<Self, Self::Error> {
-        I::get(container.app())
+        I::get(container.app().data())
     }
 }
 
 impl Injectable for () {
     type Error = Infallible;
 
-    fn get(_container: AppContainer) -> Result<Self, Self::Error> {
+    fn get(_data: &RuntimeData) -> Result<Self, Self::Error> {
         Ok(())
     }
 }
@@ -46,7 +49,7 @@ impl Injectable for () {
 impl<T: 'static> Injectable for PhantomData<T> {
     type Error = Infallible;
 
-    fn get(_: AppContainer) -> Result<Self, Self::Error> {
+    fn get(_data: &RuntimeData) -> Result<Self, Self::Error> {
         Ok(PhantomData)
     }
 }

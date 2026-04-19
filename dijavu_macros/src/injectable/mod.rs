@@ -238,21 +238,21 @@ struct ImplInjectable<'a> {
 impl ToTokens for ImplInjectable<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let (impl_gen, ty_gen, where_clause) = self.config.generics.split_for_impl();
-        let construct_from_container = self.fields.construct_from_container_and_runtime();
+        let construct_from_data = self.fields.construct_from_data_and_runtime();
         let ident = &self.config.ident;
         let runtime = self.config.init.as_ref().map(|init| {
             let struct_name = &init.runtime_struct_name;
             quote!(
-                let runtime = dijavu::__private::impl_init_injectable_get_runtime::<Self, #struct_name>(container)?;
+                let runtime = dijavu::__private::impl_init_injectable_get_runtime::<Self, #struct_name>(data)?;
             )
         });
         tokens.extend(quote!(
             impl<#impl_gen> dijavu::Injectable for #ident<#ty_gen> #where_clause {
                 type Error = dijavu::Error;
 
-                fn get(container: dijavu::AppContainer) -> Result<Self, Self::Error> {
+                fn get(data: &dijavu::RuntimeData) -> Result<Self, Self::Error> {
                     #runtime
-                    Ok(Self #construct_from_container)
+                    Ok(Self #construct_from_data)
                 }
             }
         ));

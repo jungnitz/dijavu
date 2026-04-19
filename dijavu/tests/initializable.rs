@@ -22,7 +22,7 @@ async fn derive_initializable() -> dijavu::Result<()> {
     let container = builder.build().await?;
 
     assert_eq!(
-        Test::from_runtime_value(runtime, container)?
+        Test::from_runtime_value(runtime, container.data())?
             .str
             .into_static_ref(),
         "str"

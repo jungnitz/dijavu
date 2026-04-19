@@ -81,7 +81,7 @@ impl InjectableFields {
         self.construct_value(InjectableField::runtime_field_construct)
     }
 
-    pub fn construct_from_container_and_runtime(&self) -> TokenStream {
+    pub fn construct_from_data_and_runtime(&self) -> TokenStream {
         let fields = self
             .fields
             .iter()

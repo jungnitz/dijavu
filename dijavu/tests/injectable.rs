@@ -1,4 +1,4 @@
-use dijavu::{AppContainer, AppContainerBuilder, DataKey, Injectable, Result};
+use dijavu::{AppContainer, AppContainerBuilder, DataKey, Injectable, Result, RuntimeData};
 use std::convert::Infallible;
 
 #[test]
@@ -23,8 +23,8 @@ async fn from_data() -> Result<()> {
 
     impl Injectable for Dependency {
         type Error = Infallible;
-        fn get(container: AppContainer) -> std::result::Result<Self, Self::Error> {
-            Ok(Dependency(container.data().get::<DependencyKey>().unwrap()))
+        fn get(data: &RuntimeData) -> std::result::Result<Self, Self::Error> {
+            Ok(Dependency(data.get::<DependencyKey>().unwrap()))
         }
     }
 

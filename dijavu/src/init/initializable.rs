@@ -1,6 +1,6 @@
-use crate::data::DataItem;
+use crate::data::DataValue;
 use crate::init::InitAppContainer;
-use crate::{AppContainer, AppContainerBuilder, Data, InitData, InitInjectable, Result};
+use crate::{AppContainerBuilder, Data, InitData, InitInjectable, Result, RuntimeData};
 use dijavu::{DataKey, Error};
 use std::convert::Infallible;
 use std::marker::PhantomData;
@@ -8,8 +8,7 @@ use std::ops::Deref;
 
 /// A value that can be used to build an [`InitInjectable`] type
 ///
-/// `Initializable` defines the behaviour of a field when using the `InitInjectable` macro on a
-/// type.
+/// `Initializable` defines the behavior of a field when using the `InitInjectable` macro on a type.
 /// In particular, it defines
 ///
 /// - the type of the field in the initialization type and how the initial value is constructed,
@@ -22,7 +21,7 @@ use std::ops::Deref;
 /// dijavu provides some simple, but useful implementations of the trait out of the box.
 /// See e.g. [`Value`] or [`StartValue`] for examples.
 pub trait Initializable: Sized {
-    type Error: Into<dijavu::Error>;
+    type Error: Into<Error>;
     /// The type of the data that is modifiable during initialization
     type Init;
     /// The runtime state
@@ -38,10 +37,10 @@ pub trait Initializable: Sized {
         builder: &mut AppContainerBuilder,
     ) -> Result<Self::Runtime>;
 
-    /// Retrieves the value from the [`AppContainer`] at runtime.
+    /// Retrieves the value from the [`RuntimeData`].
     fn from_runtime_value(
         runtime: &'static Self::Runtime,
-        container: AppContainer,
+        data: &RuntimeData,
     ) -> Result<Self, Self::Error>;
 }
 
@@ -67,7 +66,7 @@ pub struct Value<T: 'static>(&'static T);
 
 impl<T> Initializable for Value<T>
 where
-    T: DataItem + Default,
+    T: DataValue + Default,
 {
     type Error = Error;
     type Init = T;
@@ -85,7 +84,10 @@ where
         Ok(init)
     }
 
-    fn from_runtime_value(runtime: &'static T, _: AppContainer) -> Result<Self, Self::Error> {
+    fn from_runtime_value(
+        runtime: &'static Self::Runtime,
+        _data: &RuntimeData,
+    ) -> Result<Self, Self::Error> {
         Ok(Self(runtime))
     }
 }
@@ -128,7 +130,7 @@ pub struct StartValue<T>(PhantomData<T>);
 
 impl<T> Initializable for StartValue<T>
 where
-    T: DataItem + Default,
+    T: DataValue + Default,
 {
     type Error = Error;
     type Init = T;
@@ -148,14 +150,14 @@ where
     }
 
     fn from_runtime_value(
-        _runtime: &'static (),
-        _container: AppContainer,
+        _runtime: &'static Self::Runtime,
+        _data: &RuntimeData,
     ) -> Result<Self, Self::Error> {
         Ok(Self(PhantomData))
     }
 }
 
-impl<T: DataItem> StartValue<T> {
+impl<T: DataValue> StartValue<T> {
     /// Removes the instance of `T` added to the start data by `StartValue<T>`.
     pub fn remove_from_start_data(start_data: &mut Data) -> Option<T> {
         start_data.remove::<StartValueKey<T>>()
@@ -164,7 +166,7 @@ impl<T: DataItem> StartValue<T> {
 
 struct StartValueKey<T>(PhantomData<T>);
 
-impl<T: DataItem> DataKey for StartValueKey<T> {
+impl<T: DataValue> DataKey for StartValueKey<T> {
     type Item = T;
 }
 
@@ -208,7 +210,7 @@ where
 
     fn from_runtime_value(
         _runtime: &'static Self::Runtime,
-        _container: AppContainer,
+        _data: &RuntimeData,
     ) -> Result<Self, Self::Error> {
         Ok(Self(PhantomData))
     }
@@ -253,7 +255,7 @@ where
 
     fn from_runtime_value(
         _runtime: &'static Self::Runtime,
-        _container: AppContainer,
+        _data: &RuntimeData,
     ) -> Result<Self, Self::Error> {
         Ok(Dependency(PhantomData))
     }
@@ -281,7 +283,7 @@ where
 
     fn from_runtime_value(
         runtime: &'static Self::Runtime,
-        _container: AppContainer,
+        _data: &RuntimeData,
     ) -> Result<Self, Self::Error> {
         Ok(*runtime)
     }

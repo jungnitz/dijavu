@@ -52,7 +52,7 @@ pub fn derive_initializable(input: DeriveInput) -> Result<TokenStream, syn::Erro
         &struct_data.fields,
         |accessor, field| {
             let ty = &field.ty;
-            quote!(<#ty as dijavu::Initializable>::from_runtime_value(&runtime.#accessor, container)
+            quote!(<#ty as dijavu::Initializable>::from_runtime_value(&runtime.#accessor, data)
                 .map_err(Into::<dijavu::Error>::into)?)
         },
     );
@@ -85,7 +85,7 @@ pub fn derive_initializable(input: DeriveInput) -> Result<TokenStream, syn::Erro
 
                 fn from_runtime_value(
                     runtime: &'static Self::Runtime,
-                    container: dijavu::AppContainer,
+                    data: &dijavu::RuntimeData,
                 ) -> Result<Self, Self::Error> {
                     Ok(#from_runtime_value)
                 }

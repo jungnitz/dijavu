@@ -2,7 +2,7 @@ use std::pin::Pin;
 
 use crate::data::DataEntry;
 use crate::injectable::{Injectable, ScopeInjectable};
-use crate::{BuildData, DataKey, Error, Result, RuntimeData, ScopeData};
+use crate::{BuildData, DataKey, Dependency, Error, Result, RuntimeData, ScopeData};
 
 /// Immutable handle to application-wide runtime data.
 ///
@@ -25,9 +25,9 @@ use crate::{BuildData, DataKey, Error, Result, RuntimeData, ScopeData};
 /// implementations of [`Injectable`]:
 ///
 /// ```rust
-/// # use dijavu::{Data, AppContainer};
+/// # use dijavu::{AppContainer, RuntimeData};
 /// # let container = AppContainer::empty();
-/// let data: &'static Data = container.data();
+/// let data: &'static RuntimeData = container.data();
 /// ```
 ///
 /// ## Construction
@@ -66,7 +66,7 @@ impl AppContainer {
     where
         I: Injectable,
     {
-        I::get(self)
+        I::get(self.0)
     }
 }
 
@@ -102,6 +102,21 @@ pub struct AppContainerBuilder {
 }
 
 impl AppContainerBuilder {
+    /// Retrieves an already constructed [`Injectable`] from the container.
+    ///
+    /// The `Dependency` argument is a hint to the user of this method that he should have such an
+    /// object readily available.
+    /// If he does not, using this method will in most cases lead to unpredictable errors as, while
+    /// _possible_, it is not _guaranteed_ that the requested injectable has already been built.
+    ///
+    /// Note that if you just try hard enough, you can of course circumvent this attempt to ensure
+    /// that `I` has already been built.
+    /// Don't do that and simply include `Dependency<I>` in your `InitInjectable` or
+    /// `Initializable`, from which you call this method.
+    pub fn get<I: Injectable>(&self, _dependency: &mut Dependency<I>) -> Result<I, I::Error> {
+        I::get(&self.app_data)
+    }
+
     /// Inserts a value into the final [`AppContainer`].
     ///
     /// Returns an error if a value for this key has already been inserted.
