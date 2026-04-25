@@ -1,36 +1,146 @@
-use dijavu::{AppContainer, AppContainerBuilder, DataKey, Injectable, Result, RuntimeData};
-use std::convert::Infallible;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-#[test]
-fn simple() -> Result<()> {
+use dijavu::{
+    AppContainer, BuildData, Dependency, InitAppContainer, Injectable, Result, StartValue, Value,
+};
+
+#[derive(Injectable)]
+pub struct Thing {
+    conf: Value<String>,
+}
+
+#[tokio::test]
+async fn simple() -> Result<()> {
     #[derive(Injectable)]
-    struct Inject {
-        _thing: (),
-    }
-    let container = AppContainer::empty();
-    let _value: Inject = container.get()?;
+    struct Inject(#[inject] Thing);
+
+    let mut container = InitAppContainer::default();
+
+    let thing = container.get::<Thing>()?;
+    thing.conf = String::from("hello world!");
+
+    let _inj = container.get::<Inject>()?;
+    let _dep: &mut Dependency<Thing> = &mut _inj.0;
+
+    let container = container.build().await?;
+    assert_eq!(&*container.get::<Thing>()?.conf, "hello world!");
+    assert_eq!(&*container.get::<Inject>()?.0.conf, "hello world!");
     Ok(())
 }
 
 #[tokio::test]
-async fn from_data() -> Result<()> {
-    pub struct Dependency(&'static str);
+#[cfg(not(feature = "auto_init_default"))]
+async fn no_init_error() -> Result<()> {
+    let container = InitAppContainer::default();
+    let container = container.build().await?;
+    assert!(container.get::<Thing>().is_err());
+    Ok(())
+}
 
-    struct DependencyKey;
-    impl DataKey for DependencyKey {
-        type Item = String;
-    }
-
-    impl Injectable for Dependency {
-        type Error = Infallible;
-        fn get(data: &RuntimeData) -> std::result::Result<Self, Self::Error> {
-            Ok(Dependency(data.get::<DependencyKey>().unwrap()))
+#[tokio::test]
+async fn auto_init() -> Result<()> {
+    struct CrazyDefault(String);
+    impl Default for CrazyDefault {
+        fn default() -> Self {
+            Self(String::from("crazy"))
         }
     }
 
-    let mut builder = AppContainerBuilder::default();
-    builder.insert_app_data::<DependencyKey>("test".to_owned())?;
-    let container = builder.build().await?;
-    assert_eq!(container.get::<Dependency>()?.0, "test".to_owned());
+    #[derive(Injectable)]
+    #[inject(init(auto))]
+    pub struct AnotherThing(Value<CrazyDefault>);
+
+    let container = InitAppContainer::default();
+    let container = container.build().await?;
+    assert_eq!(&*container.get::<AnotherThing>()?.0.0, "crazy");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn same_type_values() -> Result<()> {
+    #[derive(Injectable)]
+    pub struct AnotherThing(Value<String>);
+
+    let mut container = InitAppContainer::default();
+
+    let thing = container.get::<Thing>()?;
+    thing.conf = "hello world!".to_owned();
+
+    let another_thing = container.get::<AnotherThing>()?;
+    another_thing.0 = String::from("another thing!");
+
+    let container = container.build().await?;
+
+    assert_eq!(&*container.get::<Thing>()?.conf, "hello world!");
+    assert_eq!(&*container.get::<AnotherThing>()?.0, "another thing!");
+    Ok(())
+}
+
+#[tokio::test]
+async fn start_value() -> Result<()> {
+    #[derive(Injectable)]
+    pub struct Thing(StartValue<String>);
+
+    let mut container = InitAppContainer::default();
+    container.get::<Thing>()?.0 = "hello!".to_owned();
+    container.on_start(|_, start_data| {
+        assert_eq!(
+            StartValue::<String>::remove_from_start_data(start_data).as_deref(),
+            Some("hello!")
+        );
+        Ok(())
+    });
+    container.build().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn macro_hooks() -> Result<()> {
+    static ON_CONSTRUCT: AtomicBool = AtomicBool::new(false);
+    static ON_START: AtomicBool = AtomicBool::new(false);
+    static ON_START_ASYNC: AtomicBool = AtomicBool::new(false);
+
+    fn get_static_states() -> (bool, bool) {
+        let on_construct = ON_CONSTRUCT.load(Ordering::SeqCst);
+        let on_start = ON_START.load(Ordering::SeqCst);
+        let on_start_async = ON_START_ASYNC.load(Ordering::SeqCst);
+        assert_eq!(on_start, on_start_async);
+        (on_construct, on_start)
+    }
+
+    #[derive(Injectable)]
+    #[inject(init(on_construct = |_init: &mut InitAppContainer| {
+        ON_CONSTRUCT.store(true, Ordering::SeqCst);
+        Ok(())
+    }, on_build = |value: &mut TInit, _, _| {
+        value.0 = 42;
+        Ok(())
+    }, on_build_async = async |value: &mut TInit, _, _| {
+        value.1 = 24;
+        Ok(())
+    }, on_start = |_: AppContainer, _: &mut BuildData| {
+        ON_START.store(true, Ordering::SeqCst);
+        Ok(())
+    }, on_start_async = async |_: AppContainer, _: &mut BuildData| {
+        ON_START_ASYNC.store(true, Ordering::SeqCst);
+        Ok(())
+    }))]
+    pub struct T(Value<i32>, Value<i32>);
+
+    ON_START.store(false, Ordering::SeqCst);
+    ON_START_ASYNC.store(false, Ordering::SeqCst);
+
+    let mut container = InitAppContainer::default();
+    assert_eq!(get_static_states(), (false, false));
+
+    container.get::<T>()?;
+    assert_eq!(get_static_states(), (true, false));
+
+    let container = container.build().await?;
+    assert_eq!(get_static_states(), (true, true));
+    assert_eq!(*container.get::<T>().unwrap().0, 42);
+    assert_eq!(*container.get::<T>().unwrap().1, 24);
+
     Ok(())
 }

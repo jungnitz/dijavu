@@ -1,5 +1,5 @@
 use crate::container::AppContainerBuilder;
-use crate::{AppContainer, BuildData, InitData, Result, hooks, init::InitInjectable};
+use crate::{AppContainer, BuildData, InitData, Injectable, Result, hooks};
 use std::future;
 use std::mem::take;
 use std::pin::Pin;
@@ -10,7 +10,7 @@ use std::pin::Pin;
 /// It provides:
 ///
 /// - mutable access to initialization state
-/// - dependency injection via [`InitInjectable`]
+/// - dependency injection via [`Injectable`]
 /// - registration of build hooks that construct the final [`AppContainer`] during
 ///   [`build`](Self::build)
 ///
@@ -24,7 +24,7 @@ use std::pin::Pin;
 /// let data: &mut InitData = container.data_mut();
 /// ```
 ///
-/// Or use [`InitInjectable`] for structured access:
+/// Or use [`Injectable`] for structured access:
 ///
 /// ```rust,ignore
 /// let config = init.get::<Config>()?;
@@ -60,18 +60,18 @@ pub struct InitAppContainer {
 impl InitAppContainer {
     /// Returns mutable access to the underlying initialization [`InitData`].
     ///
-    /// This is primarily intended for low-level access in [`InitInjectable`] instances or to insert
+    /// This is primarily intended for low-level access in [`Injectable`] instances or to insert
     /// external data at application startup.
     pub fn data_mut(&mut self) -> &mut InitData {
         &mut self.data
     }
 
-    /// Retrieves an [`InitInjectable`] from the container.
+    /// Retrieves the initialization state of an [`Injectable`] from the container.
     ///
     /// This is the preferred way to access initialization data.
-    pub fn get<I>(&mut self) -> Result<I::Init<'_>, I::InitError>
+    pub fn get<I>(&mut self) -> Result<I::Init<'_>, I::Error>
     where
-        I: InitInjectable,
+        I: Injectable,
     {
         I::get_init(self)
     }

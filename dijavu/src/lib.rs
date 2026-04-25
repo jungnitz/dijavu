@@ -1,4 +1,4 @@
-#![doc = include_str!(concat!("../", std::env!("CARGO_PKG_README")))]
+#![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
 
 extern crate self as dijavu;
 
@@ -14,9 +14,7 @@ mod error;
 pub use self::error::{Error, Result};
 
 mod init;
-pub use init::{
-    Dependency, DropValue, InitAppContainer, InitInjectable, Initializable, StartValue, Value,
-};
+pub use init::{Dependency, DropValue, InitAppContainer, Initializable, StartValue, Value};
 
 /// Global hooks into the application lifecycle
 pub mod hooks;
@@ -24,20 +22,23 @@ pub mod hooks;
 mod injectable;
 pub use self::injectable::{Injectable, ScopeInjectable};
 
-/// Derives [`InitInjectable`] and [`Injectable`] for a struct
+/// Derives [`Injectable`] for a struct.
 ///
-/// Fields marked with `#[inject(init)]` are initialized via a generated *init struct*,
-/// which is accessible during setup and consumed during build.
+/// There are two ways, in which fields may be constructed:
+/// First, fields marked with `#[inject]` indicate [`Injectable`] types on which this type depends.
+/// The implementation will ensure that these types are initialized before this type.
+/// All other fields allow configuration during the initialization phase by utilizing their
+/// [`Initializable`] implementation.
 ///
 /// ## Example
 ///
 /// ```rust
 /// # use dijavu::*;
-/// #[derive(InitInjectable)]
+/// #[derive(Injectable)]
 /// #[inject(init(auto, type = ServiceInitValue))]
 /// pub struct Service {
+///     #[inject]
 ///     dependency: (), // () implements Injectable
-///     #[inject(init)]
 ///     init_value: Value<String>,
 /// }
 /// ```
@@ -45,8 +46,9 @@ pub use self::injectable::{Injectable, ScopeInjectable};
 /// Generates the additional initialization struct
 ///
 /// ```rust
-/// # use dijavu::{Initializable, Value};
+/// # use dijavu::{Dependency, Initializable, Value};
 /// pub struct ServiceInitValue {
+///     dependency: Dependency<()>,
 ///     init_value: <Value<String> as Initializable>::Init, // = String
 /// }
 /// ```
@@ -55,11 +57,11 @@ pub use self::injectable::{Injectable, ScopeInjectable};
 ///
 /// ```rust
 /// # use dijavu::*;
-/// # #[derive(InitInjectable)]
+/// # #[derive(Injectable)]
 /// # #[inject(init(auto, type = ServiceInitValue))]
 /// # pub struct Service {
+/// #     #[inject]
 /// #     dependency: (), // () implements Injectable
-/// #     #[inject(init)]
 /// #     init_value: Value<String>,
 /// # }
 /// # tokio_test::block_on(async {
@@ -91,46 +93,6 @@ pub use self::injectable::{Injectable, ScopeInjectable};
 /// | `init(on_build_async = <expr>`) | Runs async function `<expr>` with arguments `&mut <InitStruct>, &mut Data, &mut AppContainerBuilder` on build | - |
 /// | `init(on_start = <expr>`) | Runs function `<expr>` with arguments `AppContainer, &mut Data` on start (i.e. right after building the `AppContainer`) with the start data | - |
 /// | `init(on_start_async = <expr>`) | Runs async function `<expr>` with arguments `AppContainer, &mut Data` on start (i.e. right after building the `AppContainer`) with the start data | - |
-///
-/// ### Field-level
-///
-/// | Attribute        | Description                                                               |
-/// |------------------|---------------------------------------------------------------------------|
-/// | `init`           | Marks a field to be added to the initialization struct using its [`Initializable`] implementation. |
-pub use dijavu_macros::InitInjectable;
-
-/// Derives [`Injectable`] for a struct.
-///
-/// Each field must be injectable and is retrieved using [`Injectable::get`].
-/// This allows composing injectables without manually implementing [`Injectable`].
-///
-/// ## Example
-///
-/// ```rust
-/// use dijavu::*;
-/// #[derive(Injectable)]
-/// pub struct Service {
-///     dependency: (), // () implements Injectable
-/// }
-/// ```
-///
-/// Expands roughly to:
-///
-/// ```rust
-/// # use dijavu::*;
-/// # pub struct Service {
-/// #     dependency: (),
-/// # }
-/// impl Injectable for Service {
-///     type Error = Error;
-///
-///     fn get(container: &RuntimeData) -> Result<Self, Self::Error> {
-///         Ok(Self {
-///             dependency: <() as Injectable>::get(container)?,
-///         })
-///     }
-/// }
-/// ```
 pub use dijavu_macros::Injectable;
 
 use crate::data::{LeakedValues, define_data_wrapper};
@@ -155,8 +117,8 @@ define_data_wrapper!(
 #[doc(hidden)]
 pub mod __private {
     use crate::{
-        AppContainerBuilder, DataKey, InitAppContainer, InitData, InitInjectable, Result,
-        RuntimeData, data::DataValue,
+        AppContainerBuilder, DataKey, InitAppContainer, InitData, Injectable, Result, RuntimeData,
+        data::DataValue,
     };
     use std::{any::type_name, marker::PhantomData, pin::Pin};
 
@@ -171,7 +133,7 @@ pub mod __private {
         type Item = Runtime;
     }
 
-    pub fn impl_init_injectable_get_init<'a, Injectable, Init, Runtime>(
+    pub fn impl_injectable_get_init<'a, Inject, Init, Runtime>(
         container: &'a mut InitAppContainer,
         construct: impl FnOnce(&mut InitAppContainer) -> Result<Init>,
         into_runtime: impl for<'f> FnOnce(
@@ -184,7 +146,7 @@ pub mod __private {
         + 'static,
     ) -> Result<&'a mut Init>
     where
-        Injectable: for<'i> InitInjectable<Init<'i> = &'i mut Init>,
+        Inject: for<'i> Injectable<Init<'i> = &'i mut Init>,
         Init: DataValue,
         Runtime: DataValue,
     {
@@ -202,7 +164,7 @@ pub mod __private {
             Box::pin(async move {
                 let value = data.remove::<InitKey<Init>>().unwrap();
                 let runtime = into_runtime(value, data, builder).await?;
-                builder.insert_app_data::<RuntimeKey<Injectable, Runtime>>(runtime)?;
+                builder.insert_app_data::<RuntimeKey<Inject, Runtime>>(runtime)?;
                 Ok(())
             })
         });
@@ -213,7 +175,7 @@ pub mod __private {
             .into_mut())
     }
 
-    pub fn impl_init_injectable_get_runtime<Injectable, Runtime>(
+    pub fn impl_injectable_get_runtime<Injectable, Runtime>(
         data: &RuntimeData,
     ) -> Result<&'static Runtime>
     where

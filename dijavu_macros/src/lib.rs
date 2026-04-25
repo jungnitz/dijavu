@@ -16,15 +16,7 @@ pub fn derive_initializable(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Injectable, attributes(inject))]
 pub fn derive_injectable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    injectable::derive_injectable(input, false)
-        .unwrap_or_else(|err| err.into_compile_error())
-        .into()
-}
-
-#[proc_macro_derive(InitInjectable, attributes(inject))]
-pub fn derive_init_injectable(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    injectable::derive_injectable(input, true)
+    injectable::derive_injectable(input)
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }

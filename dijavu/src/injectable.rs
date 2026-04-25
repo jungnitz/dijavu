@@ -1,7 +1,7 @@
 #[cfg(doc)]
 use crate::AppContainer;
-use crate::RuntimeData;
 use crate::container::ScopeContainer;
+use crate::{Error, InitAppContainer, RuntimeData};
 use std::{convert::Infallible, marker::PhantomData};
 
 /// A type that can be constructed from an [`AppContainer`]
@@ -10,7 +10,14 @@ use std::{convert::Infallible, marker::PhantomData};
 /// This enables composable, type-safe dependency injection.
 pub trait Injectable: Sized + 'static {
     /// The error type returned if injection fails.
-    type Error;
+    type Error: Into<Error>;
+    /// Initialization state of this type
+    ///
+    /// This type may borrow mutably from a [`InitAppContainer`] with lifetime `'a`.
+    type Init<'a>;
+
+    /// Retrieves or constructs the initialization value from the container.
+    fn get_init(container: &mut InitAppContainer) -> Result<Self::Init<'_>, Self::Error>;
 
     /// Retrieves or constructs `Self` from the [`RuntimeData`].
     fn get(data: &RuntimeData) -> Result<Self, Self::Error>;
@@ -40,6 +47,11 @@ where
 
 impl Injectable for () {
     type Error = Infallible;
+    type Init<'a> = ();
+
+    fn get_init(_container: &mut InitAppContainer) -> Result<Self::Init<'_>, Self::Error> {
+        Ok(())
+    }
 
     fn get(_data: &RuntimeData) -> Result<Self, Self::Error> {
         Ok(())
@@ -48,6 +60,11 @@ impl Injectable for () {
 
 impl<T: 'static> Injectable for PhantomData<T> {
     type Error = Infallible;
+    type Init<'a> = ();
+
+    fn get_init(_container: &mut InitAppContainer) -> Result<Self::Init<'_>, Self::Error> {
+        Ok(())
+    }
 
     fn get(_data: &RuntimeData) -> Result<Self, Self::Error> {
         Ok(PhantomData)

@@ -25,11 +25,8 @@ impl InjectableFields {
         })
     }
 
-    pub fn field_decls(
-        &self,
-        defs: impl Fn(&InjectableField) -> Option<TokenStream>,
-    ) -> TokenStream {
-        let defs = self.fields.iter().filter_map(defs);
+    pub fn field_decls(&self, defs: impl Fn(&InjectableField) -> TokenStream) -> TokenStream {
+        let defs = self.fields.iter().map(defs);
         let phantom_data = self
             .config
             .generics
@@ -49,9 +46,9 @@ impl InjectableFields {
 
     pub fn construct_value(
         &self,
-        field_construct: impl Fn(&InjectableField) -> Option<TokenStream>,
+        field_construct: impl Fn(&InjectableField) -> TokenStream,
     ) -> TokenStream {
-        let fields = self.fields.iter().filter_map(field_construct);
+        let fields = self.fields.iter().map(field_construct);
         if self.named {
             quote!({
                 #(#fields,)*

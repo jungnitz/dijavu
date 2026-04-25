@@ -32,7 +32,7 @@ use crate::{BuildData, DataKey, Dependency, Error, Result, RuntimeData, ScopeDat
 ///
 /// ## Construction
 ///
-/// See [`InitAppContainer`](crate::InitAppContainer) and [`InitInjectable`](crate::InitInjectable)
+/// See [`InitAppContainer`](crate::InitAppContainer) and [`Injectable`](crate::Injectable)
 /// module for details on how to construct an `AppContainer`.
 #[derive(Copy, Clone)]
 pub struct AppContainer(&'static RuntimeData);
@@ -111,8 +111,8 @@ impl AppContainerBuilder {
     ///
     /// Note that if you just try hard enough, you can of course circumvent this attempt to ensure
     /// that `I` has already been built.
-    /// Don't do that and simply include `Dependency<I>` in your `InitInjectable` or
-    /// `Initializable`, from which you call this method.
+    /// Don't do that and simply include `Dependency<I>` in your `Injectable` or `Initializable`,
+    /// from which you call this method.
     pub fn get<I: Injectable>(&self, _dependency: &mut Dependency<I>) -> Result<I, I::Error> {
         I::get(&self.app_data)
     }

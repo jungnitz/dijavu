@@ -1,17 +1,9 @@
 use std::rc::Rc;
 
 use crate::injectable::DeriveInjectableConfig;
-use darling::FromField;
-use darling::util::Flag;
 use proc_macro2::{Ident, TokenStream};
 use quote::{ToTokens, quote};
-use syn::Field;
-
-#[derive(darling::FromField)]
-#[darling(attributes(inject))]
-struct FieldAttrs {
-    init: Flag,
-}
+use syn::{Field, Meta};
 
 pub struct InjectableField {
     pub config: Rc<DeriveInjectableConfig>,
@@ -31,20 +23,30 @@ impl InjectableField {
         index: usize,
         field: Field,
     ) -> syn::Result<Self> {
-        let attrs = FieldAttrs::from_field(&field)?;
-        if config.init.is_none() && attrs.init.is_present() {
-            return Err(syn::Error::new(
-                attrs.init.span(),
-                "you can only use `init` on a field when deriving `InitInjectable`",
-            ));
+        let mut inject = false;
+        for attr in &field.attrs {
+            if attr.meta.path().to_token_stream().to_string() != "inject" {
+                continue;
+            }
+            match &attr.meta {
+                Meta::Path(_) => {
+                    inject = true;
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        "did not expect a value for `#[inject]`",
+                    ));
+                }
+            }
         }
         Ok(Self {
             index,
             field,
-            source: if attrs.init.is_present() {
-                InjectableFieldSource::InitValue
-            } else {
+            source: if inject {
                 InjectableFieldSource::Injectable
+            } else {
+                InjectableFieldSource::InitValue
             },
             config,
         })
@@ -67,29 +69,25 @@ impl InjectableField {
             .unwrap_or_else(|| format!(".{}", self.index))
     }
 
-    fn is_init(&self) -> bool {
-        matches!(self.source, InjectableFieldSource::InitValue)
-    }
-
     fn with_init_ident_and_ty<R>(
         &self,
         f: impl FnOnce(std::option::Iter<Ident>, TokenStream) -> R,
-    ) -> Option<R> {
-        if !self.is_init() {
-            return None;
-        }
+    ) -> R {
         let ty = &self.field.ty;
-        Some(f(
-            self.field.ident.iter(),
-            quote!(<#ty as dijavu::Initializable>),
-        ))
+        let ty = match self.source {
+            InjectableFieldSource::Injectable => {
+                quote!(<dijavu::Dependency<#ty> as dijavu::Initializable>)
+            }
+            InjectableFieldSource::InitValue => quote!(<#ty as dijavu::Initializable>),
+        };
+        f(self.field.ident.iter(), ty)
     }
 
-    pub fn init_field_decl(&self) -> Option<TokenStream> {
+    pub fn init_field_decl(&self) -> TokenStream {
         self.with_init_ident_and_ty(|ident, ty| quote!(#(#ident:)* #ty::Init))
     }
 
-    pub fn init_field_construct(&self) -> Option<TokenStream> {
+    pub fn init_field_construct(&self) -> TokenStream {
         self.with_init_ident_and_ty(|ident, ty| {
             let error_msg = format!(
                 "could not create initialization state for field `{}` of `{}`",
@@ -103,11 +101,11 @@ impl InjectableField {
         })
     }
 
-    pub fn runtime_field_decl(&self) -> Option<TokenStream> {
+    pub fn runtime_field_decl(&self) -> TokenStream {
         self.with_init_ident_and_ty(|ident, ty| quote!(#(#ident:)* #ty::Runtime))
     }
 
-    pub fn runtime_field_construct(&self) -> Option<TokenStream> {
+    pub fn runtime_field_construct(&self) -> TokenStream {
         self.with_init_ident_and_ty(|ident, ty| {
             let accessor = self.accessor();
             let error_msg = format!(
