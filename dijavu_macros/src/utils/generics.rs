@@ -1,8 +1,7 @@
+use crate::utils::{Either, PunctuatedIter};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{GenericParam, Generics};
-
-use crate::utils::{Either, PunctuatedIter};
 
 pub struct GenericsHelper {
     pub generics: Generics,
@@ -10,6 +9,10 @@ pub struct GenericsHelper {
 }
 
 impl GenericsHelper {
+    pub fn is_empty(&self) -> bool {
+        self.generics.params.is_empty()
+    }
+
     pub fn from_generics(generics: Generics) -> Self {
         Self {
             where_clause: generics

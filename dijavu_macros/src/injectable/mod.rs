@@ -5,7 +5,7 @@ use crate::injectable::fields::InjectableFields;
 use crate::utils::GenericsHelper;
 use darling::util::Flag;
 use darling::{FromDeriveInput, FromMeta};
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use std::rc::Rc;
 use syn::{Data, DeriveInput, Expr, Visibility};
@@ -174,8 +174,18 @@ impl ToTokens for ImplInjectable<'_> {
 
         // automatic initialization
         let ident = &self.config.ident;
-        let automatic = init.automatic.then(|| {
-            quote! {
+        let automatic = if init.automatic {
+            if !self.config.generics.is_empty() {
+                tokens.extend(
+                    syn::Error::new(
+                        Span::call_site(),
+                        "cannot automatically initialize a struct with generics",
+                    )
+                    .into_compile_error(),
+                );
+                return;
+            }
+            Some(quote! {
                 #[dijavu::__private::ctor::ctor(anonymous, crate_path = dijavu::__private::ctor)]
                 fn auto_init() {
                     dijavu::hooks::add_global_before_build_hook(|container| {
@@ -183,8 +193,10 @@ impl ToTokens for ImplInjectable<'_> {
                         Ok(())
                     })
                 }
-            }
-        });
+            })
+        } else {
+            None
+        };
 
         let (impl_gen, ty_gen, where_clause) = self.config.generics.split_for_impl();
         let runtime_construct = self.fields.runtime_construct();
@@ -201,7 +213,7 @@ impl ToTokens for ImplInjectable<'_> {
 
                 fn get_init(
                     container: &mut dijavu::InitAppContainer
-                ) -> Result<Self::Init<'_>, Self::Error> {
+                ) -> Result<<Self as dijavu::Injectable>::Init<'_>, <Self as dijavu::Injectable>::Error> {
                     dijavu::__private::impl_injectable_get_init::<Self, #init_struct_name<#ty_gen>, #runtime_struct_name::<#ty_gen>>(
                         container,
                         |container| {
@@ -218,7 +230,7 @@ impl ToTokens for ImplInjectable<'_> {
                     )
                 }
 
-                fn get(data: &dijavu::RuntimeData) -> Result<Self, Self::Error> {
+                fn get(data: &dijavu::RuntimeData) -> Result<Self, <Self as dijavu::Injectable>::Error> {
                     #get_runtime_value
                     Ok(Self #construct_from_data)
                 }
