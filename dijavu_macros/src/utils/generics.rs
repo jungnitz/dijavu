@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
-use syn::{GenericParam, Generics, Ident, Lifetime};
+use syn::{GenericParam, Generics};
 
 use crate::utils::{Either, PunctuatedIter};
 
@@ -21,14 +21,6 @@ impl GenericsHelper {
         }
     }
 
-    pub fn type_param_names(&self) -> impl Iterator<Item = &Ident> {
-        self.generics.type_params().map(|param| &param.ident)
-    }
-
-    pub fn lifetime_names(&self) -> impl Iterator<Item = &Lifetime> {
-        self.generics.lifetimes().map(|param| &param.lifetime)
-    }
-
     pub fn split_for_impl(&self) -> (impl ToTokens, impl ToTokens, impl ToTokens) {
         (
             PunctuatedIter::comma(self.generics.params.iter()),
@@ -39,19 +31,5 @@ impl GenericsHelper {
             })),
             &self.where_clause,
         )
-    }
-
-    pub fn make_phantom_data(&self) -> Option<TokenStream> {
-        if self.generics.params.is_empty() {
-            return None;
-        }
-        let ty = self.type_param_names();
-        let lt = self.lifetime_names();
-        Some(quote!(
-            ::std::marker::PhantomData<(
-                #(&#lt (),)*
-                #(#ty,)*
-            )>
-        ))
     }
 }

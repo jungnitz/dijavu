@@ -27,20 +27,13 @@ impl InjectableFields {
 
     pub fn field_decls(&self, defs: impl Fn(&InjectableField) -> TokenStream) -> TokenStream {
         let defs = self.fields.iter().map(defs);
-        let phantom_data = self
-            .config
-            .generics
-            .make_phantom_data()
-            .unwrap_or_else(|| quote!(std::marker::PhantomData<()>));
         let where_clause = self.config.generics.split_for_impl().2;
         if self.named {
             quote!(#where_clause {
                 #(#defs,)*
-                #[doc(hidden)]
-                _dijavu_pd: #phantom_data,
             })
         } else {
-            quote!((#(#defs,)* #[doc(hidden)] #phantom_data,) #where_clause;)
+            quote!((#(#defs,)*) #where_clause;)
         }
     }
 
@@ -52,12 +45,10 @@ impl InjectableFields {
         if self.named {
             quote!({
                 #(#fields,)*
-                _dijavu_pd: std::marker::PhantomData,
             })
         } else {
             quote!((
                 #(#fields,)*
-                std::marker::PhantomData,
             ))
         }
     }

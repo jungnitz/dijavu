@@ -39,7 +39,7 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
     }
     #[derive(Default, FromMeta)]
     struct InitMeta {
-        auto: Flag,
+        auto: Option<bool>,
         on_construct: Option<Expr>,
         on_build: Option<Expr>,
         on_build_async: Option<Expr>,
@@ -62,10 +62,7 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
                 .unwrap_or_else(|| format_ident!("{}Init", input.ident)),
             hide_struct: init.hide.is_present(),
             runtime_struct_name: format_ident!("{}Runtime", input.ident),
-            #[cfg(not(feature = "auto_init_default"))]
-            automatic: init.auto.is_present(),
-            #[cfg(feature = "auto_init_default")]
-            automatic: true,
+            automatic: init.auto.unwrap_or(default_auto()),
             on_construct: init.on_construct,
             on_build: init.on_build,
             on_build_async: init.on_build_async,
@@ -193,7 +190,7 @@ impl ToTokens for ImplInjectable<'_> {
         let runtime_construct = self.fields.runtime_construct();
 
         let get_runtime_value = quote!(
-            let runtime = dijavu::__private::impl_injectable_get_runtime::<Self, #runtime_struct_name>(data)?;
+            let runtime = dijavu::__private::impl_injectable_get_runtime::<Self, #runtime_struct_name<#ty_gen>>(data)?;
         );
         let construct_from_data = self.fields.construct_from_data_and_runtime();
 
@@ -229,4 +226,14 @@ impl ToTokens for ImplInjectable<'_> {
             #automatic
         });
     }
+}
+
+#[cfg(feature = "auto_init_default")]
+fn default_auto() -> bool {
+    true
+}
+
+#[cfg(not(feature = "auto_init_default"))]
+fn default_auto() -> bool {
+    false
 }
