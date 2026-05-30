@@ -4,8 +4,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// A dynamic, type-erased error.
 ///
-/// This error is used as the default error for derived implementations with fallible methods as
-/// well as for functions where multiple or dynamic error types could arise.
+/// This error is used as the default error type throughout this crate.
 pub struct Error(anyhow::Error);
 
 impl Error {
@@ -39,6 +38,7 @@ impl Error {
     /// let err = Error::msg("value not present")
     ///     .with_context("injecting field `thing` of `Struct` failed");
     /// ```
+    #[must_use]
     pub fn with_context<D>(self, context: D) -> Self
     where
         D: Display + Send + Sync + 'static,
@@ -47,6 +47,7 @@ impl Error {
     }
 
     /// Convert to a std error trait object
+    #[must_use]
     pub fn into_std_error(self) -> Box<dyn std::error::Error + Send + Sync> {
         self.0.into_boxed_dyn_error()
     }

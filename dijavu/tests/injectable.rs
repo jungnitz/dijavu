@@ -1,58 +1,54 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-
-use dijavu::{
-    AppContainer, BuildData, Dependency, InitAppContainer, Injectable, Result, StartValue, Value,
-};
+use dijavu::initializables::{Inject, Value};
+use dijavu::{InitInjector, Injectable, InjectorBuilder, Result};
+use std::sync::atomic::{AtomicI32, Ordering};
 
 #[derive(Injectable)]
-pub struct Thing {
-    conf: Value<String>,
+pub struct WithStringValue {
+    value: Value<String>,
 }
 
 #[tokio::test]
 async fn simple() -> Result<()> {
     #[derive(Injectable)]
-    struct Inject(#[inject] Thing);
+    struct Simple(Inject<WithStringValue>);
 
-    let mut container = InitAppContainer::default();
+    let mut injector = InitInjector::default();
 
-    let thing = container.get::<Thing>()?;
-    thing.conf = String::from("hello world!");
+    injector.get::<Simple>().await?;
 
-    let _inj = container.get::<Inject>()?;
-    let _dep: &mut Dependency<Thing> = &mut _inj.0;
+    let value = injector.get::<WithStringValue>().await?;
+    value.value = String::from("hello world!");
 
-    let container = container.build().await?;
-    assert_eq!(&*container.get::<Thing>()?.conf, "hello world!");
-    assert_eq!(&*container.get::<Inject>()?.0.conf, "hello world!");
+    let injector = injector.build().await?;
+    assert_eq!(&*injector.get::<WithStringValue>().value, "hello world!");
+    assert_eq!(&*injector.get::<Simple>().0.value, "hello world!");
     Ok(())
 }
 
 #[tokio::test]
-#[cfg(not(feature = "auto_init_default"))]
-async fn no_init_error() -> Result<()> {
-    let container = InitAppContainer::default();
-    let container = container.build().await?;
-    assert!(container.get::<Thing>().is_err());
+async fn uninitialized_is_none() -> Result<()> {
+    let injector = InitInjector::default();
+    let injector = injector.build().await?;
+    assert!(injector.get_opt::<WithStringValue>().is_none());
     Ok(())
 }
 
 #[tokio::test]
 async fn auto_init() -> Result<()> {
-    struct CrazyDefault(String);
-    impl Default for CrazyDefault {
+    struct Foo(String);
+    impl Default for Foo {
         fn default() -> Self {
-            Self(String::from("crazy"))
+            Self(String::from("foo"))
         }
     }
 
     #[derive(Injectable)]
     #[inject(init(auto))]
-    pub struct AnotherThing(Value<CrazyDefault>);
+    pub struct FooInjectable(Value<Foo>);
 
-    let container = InitAppContainer::default();
-    let container = container.build().await?;
-    assert_eq!(&*container.get::<AnotherThing>()?.0.0, "crazy");
+    let injector = InitInjector::default();
+    let injector = injector.build().await?;
+    assert_eq!(&*injector.get::<FooInjectable>().0.0, "foo");
 
     Ok(())
 }
@@ -60,87 +56,79 @@ async fn auto_init() -> Result<()> {
 #[tokio::test]
 async fn same_type_values() -> Result<()> {
     #[derive(Injectable)]
-    pub struct AnotherThing(Value<String>);
+    pub struct WithAnotherStringValue(Value<String>);
 
-    let mut container = InitAppContainer::default();
+    let mut injector = InitInjector::default();
 
-    let thing = container.get::<Thing>()?;
-    thing.conf = "hello world!".to_owned();
+    let thing = injector.get::<WithStringValue>().await?;
+    thing.value = "hello world!".to_owned();
 
-    let another_thing = container.get::<AnotherThing>()?;
+    let another_thing = injector.get::<WithAnotherStringValue>().await?;
     another_thing.0 = String::from("another thing!");
 
-    let container = container.build().await?;
+    let injector = injector.build().await?;
 
-    assert_eq!(&*container.get::<Thing>()?.conf, "hello world!");
-    assert_eq!(&*container.get::<AnotherThing>()?.0, "another thing!");
-    Ok(())
-}
-
-#[tokio::test]
-async fn start_value() -> Result<()> {
-    #[derive(Injectable)]
-    pub struct Thing(StartValue<String>);
-
-    let mut container = InitAppContainer::default();
-    container.get::<Thing>()?.0 = "hello!".to_owned();
-    container.on_start(|_, start_data| {
-        assert_eq!(
-            StartValue::<String>::remove_from_start_data(start_data).as_deref(),
-            Some("hello!")
-        );
-        Ok(())
-    });
-    container.build().await?;
+    assert_eq!(&*injector.get::<WithStringValue>().value, "hello world!");
+    assert_eq!(
+        &*injector.get::<WithAnotherStringValue>().0,
+        "another thing!"
+    );
     Ok(())
 }
 
 #[tokio::test]
 async fn macro_hooks() -> Result<()> {
-    static ON_CONSTRUCT: AtomicBool = AtomicBool::new(false);
-    static ON_START: AtomicBool = AtomicBool::new(false);
-    static ON_START_ASYNC: AtomicBool = AtomicBool::new(false);
+    static ON_INIT: AtomicI32 = AtomicI32::new(0);
+    static ON_BUILD: AtomicI32 = AtomicI32::new(0);
 
-    fn get_static_states() -> (bool, bool) {
-        let on_construct = ON_CONSTRUCT.load(Ordering::SeqCst);
-        let on_start = ON_START.load(Ordering::SeqCst);
-        let on_start_async = ON_START_ASYNC.load(Ordering::SeqCst);
-        assert_eq!(on_start, on_start_async);
-        (on_construct, on_start)
+    fn get_static_states() -> (i32, i32) {
+        let on_init = ON_INIT.load(Ordering::SeqCst);
+        let on_build = ON_BUILD.load(Ordering::SeqCst);
+        (on_init, on_build)
     }
 
     #[derive(Injectable)]
-    #[inject(init(on_construct = |_init: &mut InitAppContainer| {
-        ON_CONSTRUCT.store(true, Ordering::SeqCst);
+    #[inject(init(hook = async |values: &mut ValuesInit, _i: &mut InitInjector| -> Result<()> {
+        ON_INIT.fetch_add(1, Ordering::SeqCst);
+        values.0 = 1;
         Ok(())
-    }, on_build = |value: &mut TInit, _, _| {
-        value.0 = 42;
-        Ok(())
-    }, on_build_async = async |value: &mut TInit, _, _| {
-        value.1 = 24;
-        Ok(())
-    }, on_start = |_: AppContainer, _: &mut BuildData| {
-        ON_START.store(true, Ordering::SeqCst);
-        Ok(())
-    }, on_start_async = async |_: AppContainer, _: &mut BuildData| {
-        ON_START_ASYNC.store(true, Ordering::SeqCst);
+    }), build(hook = async |values: &mut ValuesInit, _builder: &mut InjectorBuilder| -> Result<()> {
+        ON_BUILD.fetch_add(1, Ordering::SeqCst);
+        values.1 = 2;
         Ok(())
     }))]
-    pub struct T(Value<i32>, Value<i32>);
+    pub struct Values(Value<i32>, Value<i32>);
 
-    ON_START.store(false, Ordering::SeqCst);
-    ON_START_ASYNC.store(false, Ordering::SeqCst);
+    let mut injector = InitInjector::default();
+    assert_eq!(get_static_states(), (0, 0));
 
-    let mut container = InitAppContainer::default();
-    assert_eq!(get_static_states(), (false, false));
+    injector.get::<Values>().await?;
+    assert_eq!(get_static_states(), (1, 0));
 
-    container.get::<T>()?;
-    assert_eq!(get_static_states(), (true, false));
+    assert_eq!(injector.get::<Values>().await?.0, 1);
+    assert_eq!(injector.get::<Values>().await?.1, 0);
 
-    let container = container.build().await?;
-    assert_eq!(get_static_states(), (true, true));
-    assert_eq!(*container.get::<T>().unwrap().0, 42);
-    assert_eq!(*container.get::<T>().unwrap().1, 24);
+    let injector = injector.build().await?;
+    assert_eq!(get_static_states(), (1, 1));
+
+    assert_eq!(*injector.get_opt::<Values>().unwrap().0, 1);
+    assert_eq!(*injector.get_opt::<Values>().unwrap().1, 2);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn generic() -> Result<()> {
+    #[derive(Injectable)]
+    struct GenericInjectable<T: Default + Send + Sync + 'static>(Value<T>);
+
+    let mut injector = InitInjector::default();
+    injector.get::<GenericInjectable<String>>().await?.0 = "bar".to_owned();
+    injector.get::<GenericInjectable<i32>>().await?.0 = 42;
+
+    let injector = injector.build().await?;
+    assert_eq!(*injector.get::<GenericInjectable<String>>().0, "bar");
+    assert_eq!(*injector.get::<GenericInjectable<i32>>().0, 42);
 
     Ok(())
 }

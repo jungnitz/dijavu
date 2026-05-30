@@ -1,31 +1,27 @@
-use dijavu::{AppContainerBuilder, InitAppContainer, Initializable, Value};
+use dijavu::{InitInjector, Initializable, initializables::Value};
+use dijavu_macros::Injectable;
 
 #[derive(Initializable)]
-struct Test {
-    str: Value<String>,
+struct Test<T: Default + Send + Sync + 'static> {
+    value: Value<T>,
 }
 
 #[tokio::test]
 async fn derive_initializable() -> dijavu::Result<()> {
-    let mut init_container = InitAppContainer::default();
+    #[derive(Injectable)]
+    struct TestInject<T: Default + Send + Sync + 'static>(Test<T>);
 
-    let mut init = Test::new_init_value(&mut init_container)?;
-    assert_eq!(init.str, "");
-    init.str = "str".to_owned();
+    let mut injector = InitInjector::default();
+    injector.get::<TestInject<String>>().await?.0.value = "foo".to_owned();
+    injector.get::<TestInject<i32>>().await?.0.value = 1;
 
-    let mut builder = AppContainerBuilder::default();
-    let runtime = Box::leak(Box::new(Test::build_runtime_value(
-        init,
-        init_container.data_mut(),
-        &mut builder,
-    )?));
-    let container = builder.build().await?;
+    let injector = injector.build().await?;
 
     assert_eq!(
-        Test::from_runtime_value(runtime, container.data())?
-            .str
-            .into_static_ref(),
-        "str"
+        *injector.get::<TestInject<String>>().0.value,
+        "foo".to_owned()
     );
+    assert_eq!(*injector.get::<TestInject<i32>>().0.value, 1);
+
     Ok(())
 }

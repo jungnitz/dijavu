@@ -1,57 +1,45 @@
 use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
-use std::borrow::Borrow;
 use std::collections::hash_map;
 use std::convert::Infallible;
 use std::marker::PhantomData;
 
 /// Container storing heterogeneous values via key types
 ///
-/// Each key `K: DataKey` maps to exactly one value related to type `K::Item`.
-/// The relation between the value and `K::Item` is described using the `V` generic parameter.
-/// For this parameter, we provide the implementations [`BoxValues`] and [`LeakedValues`] which
-/// store the values as `Box<dyn Any + ...>` or `&'static (dyn Any + ...)` (by leaking them)
-/// respectively.
+/// Each entry is identified by its key type `K: DataKey` and contains a value of type `K::Value`.
 ///
 /// ## Example
 ///
-/// ```rust
-/// # use dijavu::{Data, DataKey, data::BoxValues};
+/// ```
+/// # use dijavu::{Data, DataKey};
 /// struct MyKey;
 /// impl DataKey for MyKey {
-///     type Item = i32;
+///     type Value = i32;
 /// }
 ///
-/// let mut data = Data::<BoxValues>::default();
+/// let mut data = Data::default();
 /// data.insert::<MyKey>(42);
 ///
 /// assert_eq!(data.get::<MyKey>(), Some(&42));
 /// ```
-pub struct Data<V: DataValues = BoxValues>(
-    // INVARIANT: TypeId::of::<K: DataKey>() maps to a Box<K::Item>
-    FxHashMap<TypeId, V::EntryValue>,
-);
+#[derive(Default)]
+pub struct Data(FxHashMap<TypeId, Value>);
 
-impl<V: DataValues> Default for Data<V> {
-    fn default() -> Self {
-        Data(FxHashMap::default())
-    }
-}
-
-impl<V: DataValues> Data<V> {
+impl Data {
     /// Inserts a value for the given key type.
     ///
     /// Returns the previous value if one existed.
-    pub fn insert<K: DataKey>(&mut self, data: K::Item) -> Option<V::OwnedValue<K::Item>> {
+    pub fn insert<K: DataKey>(&mut self, data: K::Value) -> Option<K::Value> {
         self.0
-            .insert(TypeId::of::<K>(), V::entry_value(data))
-            .map(V::downcast)
+            .insert(TypeId::of::<K>(), Value::new(data))
+            .map(Value::downcast)
     }
 
     /// Returns an entry API for in-place manipulation.
     ///
     /// Similar to [`HashMap::entry`](std::collections::HashMap::entry), but with a key type.
-    pub fn entry<K: DataKey>(&mut self) -> DataEntry<'_, K, V> {
+    #[must_use]
+    pub fn entry<K: DataKey>(&mut self) -> DataEntry<'_, K> {
         match self.0.entry(TypeId::of::<K>()) {
             hash_map::Entry::Vacant(vacant) => DataEntry::Vacant(VacantEntry(vacant, PhantomData)),
             hash_map::Entry::Occupied(occupied) => {
@@ -63,53 +51,55 @@ impl<V: DataValues> Data<V> {
     /// Removes the value associated with the key.
     ///
     /// Returns the value if it existed.
-    pub fn remove<K: DataKey>(&mut self) -> Option<V::OwnedValue<K::Item>> {
-        self.0.remove(&TypeId::of::<K>()).map(V::downcast)
+    pub fn remove<K: DataKey>(&mut self) -> Option<K::Value> {
+        self.0.remove(&TypeId::of::<K>()).map(Value::downcast)
     }
 
     /// Returns `true` if a value for key `K` exists.
+    #[must_use]
     pub fn contains_key<K: DataKey>(&self) -> bool {
         self.0.contains_key(&TypeId::of::<K>())
     }
 
     /// Returns a reference to the value associated with key `K`.
-    pub fn get<K: DataKey>(&self) -> Option<V::ReferenceValue<'_, K::Item>> {
-        self.0.get(&TypeId::of::<K>()).map(V::downcast_ref)
+    #[must_use]
+    pub fn get<K: DataKey>(&self) -> Option<&K::Value> {
+        self.0.get(&TypeId::of::<K>()).map(Value::downcast_ref)
     }
 
     /// Returns a mutable reference to the value associated with key `K`.
-    pub fn get_mut<K: DataKey>(&mut self) -> Option<V::MutReferenceValue<'_, K::Item>> {
-        self.0.get_mut(&TypeId::of::<K>()).map(V::downcast_mut)
+    #[must_use]
+    pub fn get_mut<K: DataKey>(&mut self) -> Option<&mut K::Value> {
+        self.0.get_mut(&TypeId::of::<K>()).map(Value::downcast_mut)
     }
 }
 
 /// View into a single entry in a [`Data`] container
-pub enum DataEntry<'a, K, V: DataValues> {
+pub enum DataEntry<'a, K> {
     /// Vacant entry (no value present)
-    Vacant(VacantEntry<'a, K, V>),
+    Vacant(VacantEntry<'a, K>),
     /// Occupied entry (value already present)
-    Occupied(OccupiedEntry<'a, K, V>),
+    Occupied(OccupiedEntry<'a, K>),
 }
 
-impl<'a, K, V: DataValues> DataEntry<'a, K, V>
+impl<'a, K> DataEntry<'a, K>
 where
     K: DataKey,
-    V: DataValues,
 {
     /// Ensures a value is present and returns an occupied entry.
     ///
     /// If vacant, inserts the value. If occupied, replaces it.
-    pub fn insert_entry(self, item: K::Item) -> OccupiedEntry<'a, K, V> {
+    pub fn insert_entry(self, value: K::Value) -> OccupiedEntry<'a, K> {
         match self {
-            DataEntry::Vacant(entry) => entry.insert_entry(item),
+            DataEntry::Vacant(entry) => entry.insert_entry(value),
             DataEntry::Occupied(mut entry) => {
-                entry.insert(item);
+                entry.insert(value);
                 entry
             }
         }
     }
 
-    pub fn or_insert_with(self, f: impl FnOnce() -> K::Item) -> V::MutReferenceValue<'a, K::Item> {
+    pub fn or_insert_with(self, f: impl FnOnce() -> K::Value) -> &'a mut K::Value {
         match self.or_try_insert_with::<Infallible>(|| Ok(f())) {
             Ok(ok) => ok,
             Err(err) => match err {},
@@ -117,10 +107,14 @@ where
     }
 
     /// Inserts the value provided by the fallible closure if no value is currently present.
+    ///
+    /// # Errors
+    ///
+    /// This method forwards any errors from `f`.
     pub fn or_try_insert_with<E>(
         self,
-        f: impl FnOnce() -> Result<K::Item, E>,
-    ) -> Result<V::MutReferenceValue<'a, K::Item>, E> {
+        f: impl FnOnce() -> Result<K::Value, E>,
+    ) -> Result<&'a mut K::Value, E> {
         match self {
             DataEntry::Occupied(entry) => Ok(entry.into_mut()),
             DataEntry::Vacant(entry) => match f() {
@@ -132,61 +126,60 @@ where
 }
 
 /// Vacant entry in [`Data`]
-pub struct VacantEntry<'a, K, V: DataValues>(
-    hash_map::VacantEntry<'a, TypeId, V::EntryValue>,
-    PhantomData<fn(K)>,
-);
+pub struct VacantEntry<'a, K>(hash_map::VacantEntry<'a, TypeId, Value>, PhantomData<fn(K)>);
 
-impl<'a, K, V> VacantEntry<'a, K, V>
+impl<'a, K> VacantEntry<'a, K>
 where
     K: DataKey,
-    V: DataValues,
 {
     /// Inserts a value and returns a mutable reference to it.
-    pub fn insert(self, value: K::Item) -> V::MutReferenceValue<'a, K::Item> {
-        V::downcast_mut(self.0.insert(V::entry_value(value)))
+    pub fn insert(self, value: K::Value) -> &'a mut K::Value {
+        self.0.insert(Value::new(value)).downcast_mut()
     }
 
     /// Inserts a value and returns an occupied entry.
-    pub fn insert_entry(self, value: K::Item) -> OccupiedEntry<'a, K, V> {
-        OccupiedEntry(self.0.insert_entry(V::entry_value(value)), PhantomData)
+    pub fn insert_entry(self, value: K::Value) -> OccupiedEntry<'a, K> {
+        OccupiedEntry(self.0.insert_entry(Value::new(value)), PhantomData)
     }
 }
 
 /// An occupied entry in [`Data`]
-pub struct OccupiedEntry<'a, K, V: DataValues>(
-    hash_map::OccupiedEntry<'a, TypeId, V::EntryValue>,
+pub struct OccupiedEntry<'a, K>(
+    hash_map::OccupiedEntry<'a, TypeId, Value>,
     PhantomData<fn(K)>,
 );
 
-impl<'a, K, V> OccupiedEntry<'a, K, V>
+impl<'a, K> OccupiedEntry<'a, K>
 where
     K: DataKey,
-    V: DataValues,
 {
     /// Replaces the value, returning the old one.
-    pub fn insert(&mut self, value: K::Item) -> V::OwnedValue<K::Item> {
-        V::downcast(self.0.insert(V::entry_value(value)))
+    pub fn insert(&mut self, value: K::Value) -> K::Value {
+        self.0.insert(Value::new(value)).downcast()
     }
 
     /// Returns a shared reference to the value.
-    pub fn get(&self) -> V::ReferenceValue<'_, K::Item> {
-        V::downcast_ref(self.0.get())
+    #[must_use]
+    pub fn get(&self) -> &K::Value {
+        self.0.get().downcast_ref()
     }
 
     /// Returns a mutable reference to the value.
-    pub fn get_mut(&mut self) -> V::MutReferenceValue<'_, K::Item> {
-        V::downcast_mut(self.0.get_mut())
+    #[must_use]
+    pub fn get_mut(&mut self) -> &mut K::Value {
+        self.0.get_mut().downcast_mut()
     }
 
     /// Converts into a mutable reference with the entry lifetime.
-    pub fn into_mut(self) -> V::MutReferenceValue<'a, K::Item> {
-        V::downcast_mut(self.0.into_mut())
+    #[must_use]
+    pub fn into_mut(self) -> &'a mut K::Value {
+        self.0.into_mut().downcast_mut()
     }
 
     /// Removes and returns the value.
-    pub fn remove(self) -> V::OwnedValue<K::Item> {
-        V::downcast(self.0.remove())
+    #[expect(clippy::must_use_candidate)]
+    pub fn remove(self) -> K::Value {
+        self.0.remove().downcast()
     }
 }
 
@@ -195,7 +188,7 @@ where
 /// Each key type defines the associated value type it stores.
 pub trait DataKey: 'static {
     /// The value type stored in an entry for this key
-    type Item: DataValue;
+    type Value: DataValue;
 }
 
 /// Value that can be stored in [`Data`]
@@ -205,68 +198,23 @@ pub trait DataValue: Any + Send + Sync {}
 
 impl<T: Any + Send + Sync> DataValue for T {}
 
-/// Describes how the values for a [`DataKey`] are stored in a [`Data`] instance.
-pub trait DataValues {
-    type OwnedValue<T: DataValue>: Borrow<T>;
-    type ReferenceValue<'a, T: DataValue>: Borrow<T>;
-    type MutReferenceValue<'a, T: DataValue>: Borrow<T>;
-    type EntryValue;
+struct Value(Box<dyn Any + Send + Sync>);
 
-    fn entry_value<T: DataValue>(v: T) -> Self::EntryValue;
-    fn downcast<T: DataValue>(v: Self::EntryValue) -> Self::OwnedValue<T>;
-    fn downcast_ref<T: DataValue>(v: &Self::EntryValue) -> Self::ReferenceValue<'_, T>;
-    fn downcast_mut<T: DataValue>(v: &mut Self::EntryValue) -> Self::MutReferenceValue<'_, T>;
-}
-
-/// Store values as a `Box<dyn Any + ...>`
-pub struct BoxValues;
-
-impl DataValues for BoxValues {
-    type OwnedValue<T: DataValue> = T;
-    type ReferenceValue<'a, T: DataValue> = &'a T;
-    type MutReferenceValue<'a, T: DataValue> = &'a mut T;
-    type EntryValue = Box<dyn Any + Send + Sync>;
-
-    fn entry_value<T: DataValue>(v: T) -> Self::EntryValue {
-        Box::new(v)
+impl Value {
+    fn new<T: DataValue>(v: T) -> Self {
+        Self(Box::new(v))
     }
 
-    fn downcast<T: DataValue>(v: Self::EntryValue) -> Self::OwnedValue<T> {
-        *(Box::<dyn Any + Send + Sync>::downcast(v).unwrap())
+    fn downcast<T: DataValue>(self) -> T {
+        *(Box::<dyn Any + Send + Sync>::downcast(self.0).unwrap())
     }
 
-    fn downcast_ref<T: DataValue>(v: &Self::EntryValue) -> Self::ReferenceValue<'_, T> {
-        Box::as_ref(v).downcast_ref::<T>().unwrap()
+    fn downcast_ref<T: DataValue>(&self) -> &T {
+        Box::as_ref(&self.0).downcast_ref::<T>().unwrap()
     }
 
-    fn downcast_mut<T: DataValue>(v: &mut Self::EntryValue) -> Self::MutReferenceValue<'_, T> {
-        Box::as_mut(v).downcast_mut::<T>().unwrap()
-    }
-}
-
-/// Store values as a `&'static (dyn Any + ...)` by leaking them
-pub struct LeakedValues;
-
-impl DataValues for LeakedValues {
-    type OwnedValue<T: DataValue> = &'static T;
-    type ReferenceValue<'a, T: DataValue> = &'static T;
-    type MutReferenceValue<'a, T: DataValue> = &'static T;
-    type EntryValue = &'static (dyn Any + Send + Sync);
-
-    fn entry_value<T: DataValue>(v: T) -> Self::EntryValue {
-        Box::leak(Box::new(v))
-    }
-
-    fn downcast<T: DataValue>(v: Self::EntryValue) -> Self::OwnedValue<T> {
-        Self::downcast_ref(&v)
-    }
-
-    fn downcast_ref<T: DataValue>(v: &Self::EntryValue) -> Self::ReferenceValue<'_, T> {
-        v.downcast_ref::<T>().unwrap()
-    }
-
-    fn downcast_mut<T: DataValue>(v: &mut Self::EntryValue) -> Self::MutReferenceValue<'_, T> {
-        Self::downcast_ref(v)
+    fn downcast_mut<T: DataValue>(&mut self) -> &mut T {
+        Box::as_mut(&mut self.0).downcast_mut::<T>().unwrap()
     }
 }
 
@@ -275,21 +223,12 @@ macro_rules! define_data_wrapper {
         $(#[doc = $doc:literal])*
         $vis:vis $name:ident;
     ) => {
-        crate::data::define_data_wrapper!(
-            $(#[doc = $doc])*
-            $vis $name -> crate::data::BoxValues;
-        );
-    };
-    (
-        $(#[doc = $doc:literal])*
-        $vis:vis $name:ident -> $ty:ty;
-    ) => {
         $(#[doc = $doc])*
         #[derive(Default)]
-        pub struct $name(crate::data::Data::<$ty>);
+        $vis struct $name(crate::data::Data);
 
         impl std::ops::Deref for $name {
-            type Target = crate::data::Data::<$ty>;
+            type Target = crate::data::Data;
 
             fn deref(&self) -> &Self::Target {
                 &self.0
@@ -312,79 +251,54 @@ mod tests {
 
     struct KeyA;
     impl DataKey for KeyA {
-        type Item = u32;
+        type Value = u32;
     }
 
     struct KeyB;
     impl DataKey for KeyB {
-        type Item = u32;
+        type Value = u32;
     }
 
     #[test]
     fn insert_and_get() {
-        fn insert_and_get<V: DataValues>() {
-            let mut data = Data::<V>::default();
-            assert!(data.insert::<KeyA>(42).is_none());
-            assert_eq!(data.get::<KeyA>().as_ref().map(Borrow::borrow), Some(&42));
-            assert!(data.contains_key::<KeyA>());
-            assert_eq!(
-                data.remove::<KeyA>().as_ref().map(Borrow::borrow),
-                Some(&42)
-            );
-            assert!(!data.contains_key::<KeyA>());
-        }
-        insert_and_get::<BoxValues>();
-        insert_and_get::<LeakedValues>();
+        let mut data = Data::default();
+        assert!(data.insert::<KeyA>(42).is_none());
+        assert_eq!(data.get::<KeyA>(), Some(&42));
+        assert!(data.contains_key::<KeyA>());
+        assert_eq!(data.remove::<KeyA>(), Some(42));
+        assert!(!data.contains_key::<KeyA>());
     }
 
     #[test]
     fn conflict() {
-        fn conflict<V: DataValues>() {
-            let mut data = Data::<V>::default();
-            assert!(data.insert::<KeyA>(42).is_none());
-            assert!(data.insert::<KeyB>(1).is_none());
-            assert_eq!(data.get::<KeyA>().as_ref().map(Borrow::borrow), Some(&42));
-            assert_eq!(data.get::<KeyB>().as_ref().map(Borrow::borrow), Some(&1));
-        }
-        conflict::<BoxValues>();
-        conflict::<LeakedValues>();
+        let mut data = Data::default();
+        assert!(data.insert::<KeyA>(42).is_none());
+        assert!(data.insert::<KeyB>(1).is_none());
+        assert_eq!(data.get::<KeyA>(), Some(&42));
+        assert_eq!(data.get::<KeyB>(), Some(&1));
     }
 
     #[test]
     fn insert_replace() {
-        fn insert_replace<V: DataValues>() {
-            let mut data = Data::<V>::default();
-            assert!(data.insert::<KeyA>(42).is_none());
-            assert_eq!(
-                data.insert::<KeyA>(32).as_ref().map(Borrow::borrow),
-                Some(&42)
-            );
-        }
-        insert_replace::<BoxValues>();
-        insert_replace::<LeakedValues>();
+        let mut data = Data::default();
+        assert!(data.insert::<KeyA>(42).is_none());
+        assert_eq!(data.insert::<KeyA>(32), Some(42));
     }
 
     #[test]
     fn entry() {
-        fn entry<V: DataValues>() {
-            let mut data = Data::<V>::default();
-            let DataEntry::Vacant(entry) = data.entry::<KeyA>() else {
-                panic!("not vacant");
-            };
-            entry.insert(42);
-            assert_eq!(data.get::<KeyA>().as_ref().map(Borrow::borrow), Some(&42));
-            let DataEntry::Occupied(mut entry) = data.entry::<KeyA>() else {
-                panic!("not occupied");
-            };
-            assert_eq!(entry.get().borrow(), &42);
-            assert_eq!(entry.get_mut().borrow(), &42);
-            assert_eq!(entry.remove().borrow(), &42);
-            assert_eq!(
-                data.entry::<KeyA>().insert_entry(32).into_mut().borrow(),
-                &32
-            );
-        }
-        entry::<BoxValues>();
-        entry::<LeakedValues>();
+        let mut data = Data::default();
+        let DataEntry::Vacant(entry) = data.entry::<KeyA>() else {
+            panic!("not vacant");
+        };
+        entry.insert(42);
+        assert_eq!(data.get::<KeyA>(), Some(&42));
+        let DataEntry::Occupied(mut entry) = data.entry::<KeyA>() else {
+            panic!("not occupied");
+        };
+        assert_eq!(entry.get(), &42);
+        assert_eq!(entry.get_mut(), &42);
+        assert_eq!(entry.remove(), 42);
+        assert_eq!(data.entry::<KeyA>().insert_entry(32).into_mut(), &32);
     }
 }

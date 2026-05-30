@@ -6,7 +6,7 @@ pub struct PunctuatedIter<I, D>(I, D);
 
 impl<I> PunctuatedIter<I, Token![,]> {
     pub fn comma(iter: I) -> Self {
-        Self(iter, Default::default())
+        Self(iter, <Token![,]>::default())
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::utils::{Either, PunctuatedIter};
+use darling::FromGenerics;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{GenericParam, Generics};
@@ -13,17 +14,6 @@ impl GenericsHelper {
         self.generics.params.is_empty()
     }
 
-    pub fn from_generics(generics: Generics) -> Self {
-        Self {
-            where_clause: generics
-                .where_clause
-                .as_ref()
-                .map(ToTokens::to_token_stream)
-                .unwrap_or_else(|| quote!(where)),
-            generics,
-        }
-    }
-
     pub fn split_for_impl(&self) -> (impl ToTokens, impl ToTokens, impl ToTokens) {
         (
             PunctuatedIter::comma(self.generics.params.iter()),
@@ -34,5 +24,17 @@ impl GenericsHelper {
             })),
             &self.where_clause,
         )
+    }
+}
+
+impl FromGenerics for GenericsHelper {
+    fn from_generics(generics: &Generics) -> darling::Result<Self> {
+        Ok(Self {
+            where_clause: generics
+                .where_clause
+                .as_ref()
+                .map_or_else(|| quote!(where), ToTokens::to_token_stream),
+            generics: generics.clone(),
+        })
     }
 }
