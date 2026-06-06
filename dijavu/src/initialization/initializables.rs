@@ -104,6 +104,7 @@ type InitializablesBuilder<T> = Box<
 /// build.
 /// It implements [`NewInitValue`] if `T` implements `Default` and uses `T`'s default value as the
 /// initialization value.
+#[derive(Debug, Copy, Clone)]
 pub struct DropValue<T>(PhantomData<T>);
 
 impl<T: DataValue> Initializable for DropValue<T> {
