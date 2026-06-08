@@ -1,6 +1,6 @@
 use crate::build::Slot;
 use crate::{InitInjector, Initializable, Injectable, InjectorBuilder, NewInitValue};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 /// Injects an [`Injectable`].
 ///
@@ -48,3 +48,11 @@ impl<I: 'static> Deref for Inject<I> {
         self.to_static_ref()
     }
 }
+
+impl<I: 'static> Clone for Inject<I> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<I: 'static> Copy for Inject<I> {}
