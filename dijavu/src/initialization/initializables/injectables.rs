@@ -32,12 +32,14 @@ where
 }
 
 impl<T> InjectablesInit<T> {
-    pub fn add<I>(&mut self)
+    pub async fn add<I>(&mut self, injector: &mut InitInjector) -> Result<(), I::Error>
     where
         I: Injectable,
         &'static I: Into<T>,
     {
-        self.0.add::<Inject<I>>(());
+        let init = Inject::<I>::new_init(injector).await?;
+        self.0.add::<Inject<I>>(init);
+        Ok(())
     }
 }
 

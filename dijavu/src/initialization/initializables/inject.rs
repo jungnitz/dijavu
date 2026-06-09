@@ -1,6 +1,7 @@
 use crate::build::Slot;
 use crate::{InitInjector, Initializable, Injectable, InjectorBuilder, NewInitValue};
-use std::ops::{Deref, DerefMut};
+use std::marker::PhantomData;
+use std::ops::Deref;
 
 /// Injects an [`Injectable`].
 ///
@@ -10,11 +11,13 @@ use std::ops::{Deref, DerefMut};
 /// This behavior is necessary in order to allow circular references to exist between injectables.
 pub struct Inject<I: 'static>(Slot<I>);
 
+pub struct InjectInit<I: 'static>(PhantomData<fn(I)>);
+
 impl<I> Initializable for Inject<I>
 where
     I: Injectable,
 {
-    type Init = ();
+    type Init = InjectInit<I>;
 
     async fn build(_init: Self::Init, builder: &mut InjectorBuilder) -> crate::Result<Self> {
         Ok(Self(builder.enqueue::<I>()))
@@ -29,7 +32,7 @@ where
 
     async fn new_init(injector: &mut InitInjector) -> Result<Self::Init, Self::Error> {
         injector.get::<I>().await?;
-        Ok(())
+        Ok(InjectInit(PhantomData))
     }
 }
 
