@@ -48,7 +48,7 @@ impl InjectorBuilder {
     pub(crate) fn enqueue<I: Injectable>(&mut self) -> Slot<I> {
         *self.slots.entry::<SlotKey<I>>().or_insert_with(|| {
             self.injectable_builders
-                .push(Box::new(InjectableInitializerImpl::<I>::default()));
+                .push(Box::new(InjectableBuilderImpl::<I>::default()));
             Slot::uninit()
         })
     }
@@ -95,9 +95,9 @@ trait InjectableBuilder: Send + Sync {
     ) -> BoxFuture<'a, crate::Result<()>>;
 }
 
-struct InjectableInitializerImpl<I>(PhantomData<I>);
+struct InjectableBuilderImpl<I>(PhantomData<I>);
 
-impl<I: Injectable> InjectableBuilder for InjectableInitializerImpl<I> {
+impl<I: Injectable> InjectableBuilder for InjectableBuilderImpl<I> {
     fn initialize<'a>(
         self: Box<Self>,
         builder: &'a mut InjectorBuilder,
@@ -121,7 +121,7 @@ impl<I: Injectable> InjectableBuilder for InjectableInitializerImpl<I> {
     }
 }
 
-impl<I> Default for InjectableInitializerImpl<I> {
+impl<I> Default for InjectableBuilderImpl<I> {
     fn default() -> Self {
         Self(PhantomData)
     }

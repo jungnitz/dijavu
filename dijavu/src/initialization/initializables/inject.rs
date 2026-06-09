@@ -1,6 +1,5 @@
 use crate::build::Slot;
 use crate::{InitInjector, Initializable, Injectable, InjectorBuilder, NewInitValue};
-use std::marker::PhantomData;
 use std::ops::Deref;
 
 /// Injects an [`Injectable`].
@@ -11,7 +10,7 @@ use std::ops::Deref;
 /// This behavior is necessary in order to allow circular references to exist between injectables.
 pub struct Inject<I: 'static>(Slot<I>);
 
-pub struct InjectInit<I: 'static>(PhantomData<fn(I)>);
+pub struct InjectInit<I: 'static>(Slot<I>);
 
 impl<I> Initializable for Inject<I>
 where
@@ -19,8 +18,8 @@ where
 {
     type Init = InjectInit<I>;
 
-    async fn build(_init: Self::Init, builder: &mut InjectorBuilder) -> crate::Result<Self> {
-        Ok(Self(builder.enqueue::<I>()))
+    async fn build(init: Self::Init, _builder: &mut InjectorBuilder) -> crate::Result<Self> {
+        Ok(Self(init.0))
     }
 }
 
@@ -31,16 +30,15 @@ where
     type Error = I::Error;
 
     async fn new_init(injector: &mut InitInjector) -> Result<Self::Init, Self::Error> {
-        injector.get::<I>().await?;
-        Ok(InjectInit(PhantomData))
+        Ok(InjectInit(injector.get_slot::<I>()))
     }
 }
 
 impl<I: 'static> Inject<I> {
-    pub fn to_static_ref(&self) -> &'static I {
+    fn to_static_ref(self) -> &'static I {
         self.0
             .get()
-            .expect("value is not yet injected; this is a bug: never use an Injected<_> right after building it")
+            .expect("value is not yet injected; this is a bug: never use an Inject<_> right after building it")
     }
 }
 

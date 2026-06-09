@@ -29,7 +29,7 @@ use std::slice;
 ///     where
 ///         I: Initializable + MyTrait,
 ///     {
-///         self.0.add::<I>(init)
+///         self.0.add_with_init::<I>(init)
 ///     }
 /// }
 ///
@@ -69,7 +69,7 @@ type InitializablesBuilder<T> = Box<
 pub struct InitializablesInit<T>(Vec<InitializablesBuilder<T>>);
 
 impl<T> InitializablesInit<T> {
-    pub fn add<I>(&mut self, init: I::Init)
+    pub fn add_with_init<I>(&mut self, init: I::Init)
     where
         I: Initializable + Into<T>,
     {
@@ -77,6 +77,14 @@ impl<T> InitializablesInit<T> {
             .push(Box::new(|builder| -> BoxFuture<'_, crate::Result<T>> {
                 Box::pin(async move { Ok(I::build(init, builder).await?.into()) })
             }));
+    }
+
+    pub async fn add<I>(&mut self, injector: &mut InitInjector) -> Result<(), I::Error>
+    where
+        I: Initializable + NewInitValue + Into<T>,
+    {
+        self.add_with_init::<I>(I::new_init(injector).await?);
+        Ok(())
     }
 }
 

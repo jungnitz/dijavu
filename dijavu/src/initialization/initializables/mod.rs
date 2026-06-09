@@ -13,8 +13,5 @@ pub use initializables::*;
 mod inject;
 pub use inject::*;
 
-mod injectables;
-pub use injectables::*;
-
 mod value;
 pub use value::*;

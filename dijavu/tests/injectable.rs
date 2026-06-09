@@ -1,6 +1,8 @@
-use dijavu::initializables::{Inject, Value};
+use dijavu::initializables::{Initializables, Inject, Value};
 use dijavu::{InitInjector, Injectable, InjectorBuilder, Result};
-use std::sync::atomic::{AtomicI32, Ordering};
+use futures::FutureExt;
+use futures::future::BoxFuture;
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 #[derive(Injectable)]
 pub struct WithStringValue {
@@ -129,6 +131,47 @@ async fn generic() -> Result<()> {
     let injector = injector.build().await?;
     assert_eq!(*injector.get::<GenericInjectable<String>>().0, "bar");
     assert_eq!(*injector.get::<GenericInjectable<i32>>().0, 42);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn self_ref() -> Result<()> {
+    #[derive(Injectable)]
+    #[inject(init(hook = init_fn))]
+    struct SelfRefInjectable(Initializables<SelfRef>);
+
+    struct SelfRef(Inject<SelfRefInjectable>);
+    impl From<Inject<SelfRefInjectable>> for SelfRef {
+        fn from(value: Inject<SelfRefInjectable>) -> Self {
+            Self(value)
+        }
+    }
+
+    static DID_INIT: AtomicBool = AtomicBool::new(false);
+    fn init_fn<'a>(
+        init: &'a mut SelfRefInjectableInit,
+        injector: &'a mut InitInjector,
+    ) -> BoxFuture<'a, Result<()>> {
+        async move {
+            DID_INIT
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .expect("should only run once");
+            init.0.add::<Inject<SelfRefInjectable>>(injector).await?;
+            Ok(())
+        }
+        .boxed()
+    }
+
+    let mut injector = InitInjector::default();
+    injector.get::<SelfRefInjectable>().await?;
+
+    let injector = injector.build().await?;
+    let sri = injector.get::<SelfRefInjectable>();
+    assert_eq!(
+        sri as *const _,
+        &*sri.0.iter().next().unwrap().0 as *const _
+    );
 
     Ok(())
 }

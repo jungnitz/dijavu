@@ -1,4 +1,11 @@
+use crate::build::Slot;
 use crate::{InitData, Injectable, Injector, InjectorBuilder, Restricted, Result, hooks};
+use futures::FutureExt;
+use futures::future::BoxFuture;
+use rustc_hash::FxHashMap;
+use std::any::TypeId;
+use std::marker::PhantomData;
+use std::mem::take;
 
 pub mod initializable;
 pub mod initializables;
@@ -28,6 +35,7 @@ pub mod initializables;
 #[derive(Default)]
 pub struct InitInjector {
     builder: InjectorBuilder,
+    initializers: FxHashMap<TypeId, Box<dyn InjectableInitializer>>,
 }
 
 impl InitInjector {
@@ -54,6 +62,16 @@ impl InitInjector {
         I::init(self, Restricted(())).await
     }
 
+    pub(crate) fn get_slot<I>(&mut self) -> Slot<I>
+    where
+        I: Injectable,
+    {
+        self.initializers
+            .entry(TypeId::of::<I>())
+            .or_insert_with(|| Box::new(InjectableInitializerImpl::<I>(PhantomData)));
+        self.builder.enqueue::<I>()
+    }
+
     /// Constructs an [`Injector`] from the current initialization state.
     ///
     /// This entails the following steps:
@@ -68,6 +86,32 @@ impl InitInjector {
     /// This method returns an error if one occurs during any of the aforementioned steps.
     pub async fn build(mut self) -> Result<Injector> {
         hooks::run_global_before_build_hooks(&mut self).await?;
+        while !self.initializers.is_empty() {
+            for (_, initializer) in take(&mut self.initializers) {
+                initializer.initialize(&mut self).await?;
+            }
+        }
         self.builder.build().await
+    }
+}
+
+trait InjectableInitializer: Send + Sync + 'static {
+    fn initialize<'a>(&'a self, injector: &'a mut InitInjector) -> BoxFuture<'a, Result<()>>;
+}
+
+struct InjectableInitializerImpl<I>(PhantomData<fn(I)>);
+
+impl<I> InjectableInitializer for InjectableInitializerImpl<I>
+where
+    I: Injectable,
+{
+    fn initialize<'a>(&'a self, injector: &'a mut InitInjector) -> BoxFuture<'a, Result<()>> {
+        async move {
+            I::init(injector, Restricted(()))
+                .await
+                .map_err(Into::into)?;
+            Ok(())
+        }
+        .boxed()
     }
 }
