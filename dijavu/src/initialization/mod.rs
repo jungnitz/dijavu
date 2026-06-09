@@ -1,5 +1,5 @@
 use crate::build::Slot;
-use crate::{InitData, Injectable, Injector, InjectorBuilder, Restricted, Result, hooks};
+use crate::{InitData, Injectable, Injector, InjectorBuilder, OnStart, Restricted, Result, hooks};
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use rustc_hash::FxHashMap;
@@ -70,6 +70,13 @@ impl InitInjector {
             .entry(TypeId::of::<I>())
             .or_insert_with(|| Box::new(InjectableInitializerImpl::<I>(PhantomData)));
         self.builder.enqueue::<I>()
+    }
+
+    /// Registers a hook that is executed right after the [`Injector`] was constructed.
+    ///
+    /// Note that there is no guarantee on the order in which the hooks are executed.
+    pub fn on_start(&mut self, on_start: impl OnStart) {
+        self.builder.on_start(on_start);
     }
 
     /// Constructs an [`Injector`] from the current initialization state.
