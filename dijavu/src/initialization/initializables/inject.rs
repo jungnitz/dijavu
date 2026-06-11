@@ -1,5 +1,6 @@
 use crate::build::Slot;
 use crate::{InitInjector, Initializable, Injectable, InjectorBuilder, NewInitValue};
+use std::convert::Infallible;
 use std::ops::Deref;
 
 /// Injects an [`Injectable`].
@@ -27,7 +28,7 @@ impl<I> NewInitValue for Inject<I>
 where
     I: Injectable,
 {
-    type Error = I::Error;
+    type Error = Infallible;
 
     async fn new_init(injector: &mut InitInjector) -> Result<Self::Init, Self::Error> {
         Ok(InjectInit(injector.get_slot::<I>()))

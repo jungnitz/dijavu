@@ -20,7 +20,11 @@ where
 
     async fn new_init(injector: &mut InitInjector) -> Result<Self::Init, Self::Error> {
         injector.get::<I>().await?;
-        Ok(DependInit(Inject::<I>::new_init(injector).await?))
+        Ok(DependInit(
+            Inject::<I>::new_init(injector)
+                .await
+                .map_err(|err| match err {})?,
+        ))
     }
 }
 
