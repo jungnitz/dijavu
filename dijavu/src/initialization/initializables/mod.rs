@@ -13,5 +13,8 @@ pub use initializables::*;
 mod inject;
 pub use inject::*;
 
+mod depend;
+pub use depend::*;
+
 mod value;
 pub use value::*;
