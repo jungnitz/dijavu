@@ -12,6 +12,16 @@ use std::ops::Deref;
 #[derive(Debug)]
 pub struct Value<T>(T);
 
+impl<T> Value<T> {
+    pub fn new(t: T) -> Self {
+        Self(t)
+    }
+
+    pub fn into_inner(this: Value<T>) -> T {
+        this.0
+    }
+}
+
 impl<T> Initializable for Value<T>
 where
     T: DataValue,
