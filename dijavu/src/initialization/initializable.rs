@@ -49,8 +49,7 @@ pub trait NewInitValue: Initializable {
 ///
 /// | Attribute               | Description                                      | Default              |
 /// |-------------------------|--------------------------------------------------|----------------------|
-/// | `init(ident = <Name>)`  | Name of generated init struct                    | `<StructName>Init`   |
-/// | `init(hide)`            | Hide init struct in a `const _: ()`-block        | disabled             |
+/// | `init(hide)`            | Apply `#[doc(hidden)` to the init struct         | disabled             |
 /// | `init(hook = <expr>)`   | Runs async function `<expr>` with arguments `&mut <InitStruct>, &mut InitInjector` when [`new_init`](NewInitValue::new_init) is called and after the init struct was successfully created | - |
 /// | `build(hook = <expr>)`  | Runs async function `<expr>` with arguments `&mut <InitStruct>, &mut InjectorBuilder` when [`build`](Initializable::build) is called | - |
 ///

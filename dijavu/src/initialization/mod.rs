@@ -1,5 +1,5 @@
 use crate::build::Slot;
-use crate::{InitData, Injectable, Injector, InjectorBuilder, OnStart, Restricted, Result, hooks};
+use crate::{InitData, Injectable, Injector, InjectorBuilder, OnStart, Result, hooks};
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use rustc_hash::FxHashMap;
@@ -7,8 +7,13 @@ use std::any::TypeId;
 use std::marker::PhantomData;
 use std::mem::take;
 
-pub mod initializable;
 pub mod initializables;
+
+mod initializable;
+pub use initializable::{Initializable, NewInitValue};
+
+mod injectable_init;
+pub use injectable_init::InjectableInit;
 
 /// Mutable container used during initialization
 ///
@@ -47,28 +52,45 @@ impl InitInjector {
         self.builder.init_data_mut()
     }
 
+    /// Returns access to the underlying [`InitData`].
+    ///
+    /// This is primarily intended for low-level access in [`Injectable`] implementations or to
+    /// insert external data at application startup.
+    pub fn data(&self) -> &InitData {
+        self.builder.init_data()
+    }
+
     /// Retrieves the initialization state of an [`Injectable`] from the container.
     /// This is the preferred way to access initialization data.
     ///
     /// # Errors
     ///
-    /// This method performs a call to [`Injectable::init`] on `I` and returns any potential error
-    /// of that call.
+    /// This method performs a call to [`Injectable::new_init_data`] on `I` and returns any
+    /// potential error of that call.
     pub async fn get<I>(&mut self) -> Result<I::Init<'_>, I::Error>
     where
         I: Injectable,
     {
-        self.builder.enqueue::<I>();
-        I::init(self, Restricted(())).await
+        let init = InjectableInit::<I>::init(self).await?;
+        Ok(I::new_init(init))
     }
 
-    pub(crate) fn get_slot<I>(&mut self) -> Slot<I>
+    fn get_slot<I>(&mut self) -> Slot<I>
     where
         I: Injectable,
     {
         self.initializers
             .entry(TypeId::of::<I>())
             .or_insert_with(|| Box::new(InjectableInitializerImpl::<I>(PhantomData)));
+        self.enqueue_assert_initialization::<I>()
+    }
+
+    /// Enqueue an injectable for building under the assumption that is has already been or will be
+    /// initialized before the build phase.
+    fn enqueue_assert_initialization<I>(&mut self) -> Slot<I>
+    where
+        I: Injectable,
+    {
         self.builder.enqueue::<I>()
     }
 
@@ -114,9 +136,7 @@ where
 {
     fn initialize<'a>(&'a self, injector: &'a mut InitInjector) -> BoxFuture<'a, Result<()>> {
         async move {
-            I::init(injector, Restricted(()))
-                .await
-                .map_err(Into::into)?;
+            injector.get::<I>().await.map_err(Into::into)?;
             Ok(())
         }
         .boxed()

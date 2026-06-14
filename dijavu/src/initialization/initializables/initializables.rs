@@ -24,12 +24,12 @@ use std::slice;
 /// #[derive(Injectable)]
 /// struct MyTraits(Initializables<BoxDynMyTrait>);
 ///
-/// impl MyTraitsInit {
+/// impl MyTraitsInit<'_> {
 ///     pub fn register<I>(&mut self, init: I::Init)
 ///     where
 ///         I: Initializable + MyTrait,
 ///     {
-///         self.0.add_with_init::<I>(init)
+///         self.0.data_mut().0.add_with_init::<I>(init)
 ///     }
 /// }
 ///
@@ -77,14 +77,6 @@ impl<T> InitializablesInit<T> {
             .push(Box::new(|builder| -> BoxFuture<'_, crate::Result<T>> {
                 Box::pin(async move { Ok(I::build(init, builder).await?.into()) })
             }));
-    }
-
-    pub async fn add<I>(&mut self, injector: &mut InitInjector) -> Result<(), I::Error>
-    where
-        I: Initializable + NewInitValue + Into<T>,
-    {
-        self.add_with_init::<I>(I::new_init(injector).await?);
-        Ok(())
     }
 }
 

@@ -21,9 +21,7 @@ pub mod hooks;
 
 mod initialization;
 pub use self::initialization::{
-    InitInjector,
-    initializable::{Initializable, NewInitValue},
-    initializables,
+    InitInjector, Initializable, InjectableInit, NewInitValue, initializables,
 };
 
 mod injectable;
@@ -48,7 +46,22 @@ define_data_wrapper!(
 );
 
 /// Prevents some trait functions to be called from non-dijavu-code.
-pub struct Restricted(());
+pub struct Restricted<T>(PhantomData<fn(T)>);
+
+impl<T> Restricted<T> {
+    fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+struct InjectableDataKey<I>(PhantomData<I>);
+
+impl<I> DataKey for InjectableDataKey<I>
+where
+    I: Injectable,
+{
+    type Value = Option<I::Data>;
+}
 
 struct InjectableKey<I: Injectable>(PhantomData<I>);
 

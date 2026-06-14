@@ -13,25 +13,21 @@ mod fields;
 pub struct StructOfInitializables {
     pub args: Rc<DeriveArgs>,
     fields: InitializableFields,
-    pub init_struct_name: Ident,
+    pub init_data_struct_name: Ident,
 }
 
 impl StructOfInitializables {
-    pub fn new(input: DeriveInput) -> syn::Result<Self> {
+    pub fn new(input: DeriveInput, init_suffix: &str) -> syn::Result<Self> {
         let args = Rc::new(DeriveArgs::from_derive_input(&input)?);
         let Data::Struct(struct_data) = input.data else {
             return Err(syn::Error::new(input.ident.span(), "must be a struct"));
         };
         let fields = InitializableFields::from_fields(args.clone(), struct_data.fields)?;
-        let init_struct_name = args
-            .init
-            .ident
-            .clone()
-            .unwrap_or_else(|| format_ident!("{}Init", &args.ident));
+        let init_struct_name = format_ident!("{}{init_suffix}", &args.ident);
         Ok(Self {
             args,
             fields,
-            init_struct_name,
+            init_data_struct_name: init_struct_name,
         })
     }
 
@@ -46,29 +42,14 @@ impl StructOfInitializables {
         quote!(#ident::<#ty_gen> #fields)
     }
 
-    pub fn init_struct_def(&self) -> TokenStream {
-        if self.args.init.hide.is_present() {
-            return quote!();
-        }
-        self.struct_def(&self.init_struct_name, &self.fields.init_fields_decl())
+    pub fn init_data_struct_def(&self) -> TokenStream {
+        self.struct_def(&self.init_data_struct_name, &self.fields.init_fields_decl())
     }
 
-    pub fn hidden_init_struct_def(&self) -> TokenStream {
-        if !self.args.init.hide.is_present() {
-            return quote!();
-        }
-        self.struct_def(&self.init_struct_name, &self.fields.init_fields_decl())
+    pub fn init_data(&self) -> TokenStream {
+        self.struct_value(&self.init_data_struct_name, &self.fields.init())
     }
 
-    pub fn init_value_with_hook(&self) -> TokenStream {
-        let value = self.struct_value(&self.init_struct_name, &self.fields.init());
-        let init_hook = self.args.run_init_hook();
-        quote!({
-            let mut init = #value;
-            #init_hook
-            init
-        })
-    }
     pub fn build(&self) -> TokenStream {
         let build_hook = self.args.run_build_hook();
         let value = self.struct_value(&self.args.ident, &self.fields.build());

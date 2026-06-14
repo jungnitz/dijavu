@@ -1,11 +1,16 @@
 mod slot;
+
 pub(crate) use self::slot::Slot;
 use self::slot::SlotKey;
+use std::any::type_name;
 
 #[cfg(doc)]
 use crate::Initializable;
 use crate::on_start::{DynOnStart, OnStart};
-use crate::{Data, InitData, Injectable, InjectableKey, InjectablesData, Injector, Restricted};
+use crate::{
+    Data, Error, InitData, Injectable, InjectableDataKey, InjectableKey, InjectablesData, Injector,
+    Restricted,
+};
 use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, TryStreamExt};
@@ -41,6 +46,11 @@ impl InjectorBuilder {
     /// Returns the current initialization data.
     pub fn init_data_mut(&mut self) -> &mut InitData {
         &mut self.init_data
+    }
+
+    /// Returns the current initialization data.
+    pub fn init_data(&self) -> &InitData {
+        &self.init_data
     }
 
     /// Enqueues an [`Injectable`] to be built and returns a slot pointing to the memory location of
@@ -108,7 +118,17 @@ impl<I: Injectable> InjectableBuilder for InjectableBuilderImpl<I> {
                 .slots
                 .get::<SlotKey<I>>()
                 .expect("slot should exist");
-            slot.set(I::build(builder, Restricted(())).await?);
+            let data = builder
+                .init_data_mut()
+                .remove::<InjectableDataKey<I>>()
+                .flatten()
+                .ok_or_else(|| {
+                    Error::msg(format!(
+                        "injectable `{}` was never fully initialized",
+                        type_name::<I>()
+                    ))
+                })?;
+            slot.set(I::build(data, builder, Restricted::new()).await?);
             assert!(
                 injectables_data
                     .insert::<InjectableKey<I>>(slot.get().expect("slot should be set"))

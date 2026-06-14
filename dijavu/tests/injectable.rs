@@ -1,5 +1,5 @@
 use dijavu::initializables::{Initializables, Inject, Value};
-use dijavu::{InitInjector, Injectable, InjectorBuilder, Result};
+use dijavu::{InitInjector, Injectable, InjectorBuilder, NewInitValue, Result};
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -18,8 +18,8 @@ async fn simple() -> Result<()> {
 
     injector.get::<Simple>().await?;
 
-    let value = injector.get::<WithStringValue>().await?;
-    value.value = String::from("hello world!");
+    let mut value = injector.get::<WithStringValue>().await?;
+    value.0.data_mut().value = String::from("hello world!");
 
     let injector = injector.build().await?;
     assert_eq!(&*injector.get::<WithStringValue>().value, "hello world!");
@@ -62,11 +62,11 @@ async fn same_type_values() -> Result<()> {
 
     let mut injector = InitInjector::default();
 
-    let thing = injector.get::<WithStringValue>().await?;
-    thing.value = "hello world!".to_owned();
+    let mut thing = injector.get::<WithStringValue>().await?;
+    thing.0.data_mut().value = "hello world!".to_owned();
 
-    let another_thing = injector.get::<WithAnotherStringValue>().await?;
-    another_thing.0 = String::from("another thing!");
+    let mut another_thing = injector.get::<WithAnotherStringValue>().await?;
+    another_thing.0.data_mut().0 = String::from("another thing!");
 
     let injector = injector.build().await?;
 
@@ -90,11 +90,11 @@ async fn macro_hooks() -> Result<()> {
     }
 
     #[derive(Injectable)]
-    #[inject(init(hook = async |values: &mut ValuesInit, _i: &mut InitInjector| -> Result<()> {
+    #[inject(init(hook = async |mut values: ValuesInit<'_>| -> Result<()> {
         ON_INIT.fetch_add(1, Ordering::SeqCst);
-        values.0 = 1;
+        values.0.data_mut().0 = 1;
         Ok(())
-    }), build(hook = async |values: &mut ValuesInit, _builder: &mut InjectorBuilder| -> Result<()> {
+    }), build(hook = async |values: &mut ValuesInitData, _builder: &mut InjectorBuilder| -> Result<()> {
         ON_BUILD.fetch_add(1, Ordering::SeqCst);
         values.1 = 2;
         Ok(())
@@ -107,8 +107,8 @@ async fn macro_hooks() -> Result<()> {
     injector.get::<Values>().await?;
     assert_eq!(get_static_states(), (1, 0));
 
-    assert_eq!(injector.get::<Values>().await?.0, 1);
-    assert_eq!(injector.get::<Values>().await?.1, 0);
+    assert_eq!(injector.get::<Values>().await?.0.data_mut().0, 1);
+    assert_eq!(injector.get::<Values>().await?.0.data_mut().1, 0);
 
     let injector = injector.build().await?;
     assert_eq!(get_static_states(), (1, 1));
@@ -125,8 +125,18 @@ async fn generic() -> Result<()> {
     struct GenericInjectable<T: Default + Send + Sync + 'static>(Value<T>);
 
     let mut injector = InitInjector::default();
-    injector.get::<GenericInjectable<String>>().await?.0 = "bar".to_owned();
-    injector.get::<GenericInjectable<i32>>().await?.0 = 42;
+    injector
+        .get::<GenericInjectable<String>>()
+        .await?
+        .0
+        .data_mut()
+        .0 = "bar".to_owned();
+    injector
+        .get::<GenericInjectable<i32>>()
+        .await?
+        .0
+        .data_mut()
+        .0 = 42;
 
     let injector = injector.build().await?;
     assert_eq!(*injector.get::<GenericInjectable<String>>().0, "bar");
@@ -149,15 +159,16 @@ async fn self_ref() -> Result<()> {
     }
 
     static DID_INIT: AtomicBool = AtomicBool::new(false);
-    fn init_fn<'a>(
-        init: &'a mut SelfRefInjectableInit,
-        injector: &'a mut InitInjector,
-    ) -> BoxFuture<'a, Result<()>> {
+    fn init_fn(mut init: SelfRefInjectableInit) -> BoxFuture<Result<()>> {
         async move {
             DID_INIT
                 .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                 .expect("should only run once");
-            init.0.add::<Inject<SelfRefInjectable>>(injector).await?;
+            let inj_init = Inject::<SelfRefInjectable>::new_init(init.0.injector_mut()).await?;
+            init.0
+                .data_mut()
+                .0
+                .add_with_init::<Inject<SelfRefInjectable>>(inj_init);
             Ok(())
         }
         .boxed()

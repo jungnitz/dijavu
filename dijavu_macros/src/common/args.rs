@@ -1,9 +1,9 @@
-use crate::utils::GenericsHelper;
+use crate::utils::{GenericsHelper, WithSpan};
 use darling::util::Flag;
 use darling::{FromDeriveInput, FromMeta};
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Expr, Ident, Visibility};
+use syn::{Expr, Ident, LitBool, Visibility};
 
 #[expect(clippy::needless_continue, reason = "emitted by FromDeriveInput")]
 mod derive_args {
@@ -31,7 +31,14 @@ pub struct InitArgs {
     pub hide: Flag,
     pub auto: Flag,
     pub hook: Option<Expr>,
-    pub ident: Option<Ident>,
+
+    #[darling(default)]
+    pub data: WithSpan<Option<InitDataArgs>>,
+}
+
+#[derive(FromMeta)]
+pub struct InitDataArgs {
+    pub hide: Option<LitBool>,
 }
 
 #[derive(FromMeta, Default)]
@@ -40,14 +47,6 @@ pub struct BuildArgs {
 }
 
 impl DeriveArgs {
-    pub fn run_init_hook(&self) -> TokenStream {
-        if let Some(init) = &self.init.hook {
-            quote!(let _: () = (#init)(&mut init, injector).await?;)
-        } else {
-            quote!()
-        }
-    }
-
     pub fn run_build_hook(&self) -> TokenStream {
         if let Some(build) = &self.build.hook {
             quote!(let _: () = (#build)(&mut init, builder).await?;)
