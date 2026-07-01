@@ -2,6 +2,7 @@
 use crate::Injectable;
 use crate::{Error, InitInjector, InjectorBuilder, data::DataValue};
 use std::convert::Infallible;
+use std::marker::PhantomData;
 
 /// Building block for [`Injectable`] types
 ///
@@ -74,6 +75,21 @@ impl Initializable for () {
 impl NewInitValue for () {
     type Error = Infallible;
 
+    async fn new_init(_injector: &mut InitInjector) -> Result<Self::Init, Self::Error> {
+        Ok(())
+    }
+}
+
+impl<T> Initializable for PhantomData<T> {
+    type Init = ();
+
+    async fn build(_init: Self::Init, _builder: &mut InjectorBuilder) -> crate::Result<Self> {
+        Ok(PhantomData)
+    }
+}
+
+impl<T> NewInitValue for PhantomData<T> {
+    type Error = Infallible;
     async fn new_init(_injector: &mut InitInjector) -> Result<Self::Init, Self::Error> {
         Ok(())
     }
