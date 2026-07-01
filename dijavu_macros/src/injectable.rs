@@ -33,7 +33,7 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
                 #init_struct_name::<'_, #ty_gen>(dijavu::InjectableInit::new(&mut data, injector))
             )
             .await
-            .map_err(dijavu::Error::from)?;
+            .map_err(Into::<dijavu::Error>::into)?;
         )
     });
 

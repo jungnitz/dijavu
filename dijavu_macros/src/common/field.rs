@@ -70,7 +70,7 @@ impl InitializableField {
         quote!(
             #(#ident:)* dijavu::Result::map_err(
                 #init(injector).await,
-                |err| dijavu::Error::from(err).with_context(#error_msg)
+                |err| Into::<dijavu::Error>::into(err).with_context(#error_msg)
             )?
         )
     }
@@ -86,7 +86,7 @@ impl InitializableField {
             quote!(
                 #(#ident:)* dijavu::Result::map_err(
                     #ty::build(init.#accessor, builder).await,
-                    |err| dijavu::Error::from(err).with_context(#error_msg)
+                    |err| Into::<dijavu::Error>::into(err).with_context(#error_msg)
                 )?
             )
         })
