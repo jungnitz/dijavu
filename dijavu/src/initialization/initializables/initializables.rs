@@ -1,6 +1,9 @@
 use crate::{InitInjector, Initializable, InjectorBuilder, NewInitValue};
 use futures::future::BoxFuture;
+use std::borrow::Borrow;
+use std::collections::{HashMap, hash_map};
 use std::convert::Infallible;
+use std::hash::Hash;
 use std::slice;
 
 /// Collection of initializables, usually used for collecting objects implementing a trait.
@@ -62,21 +65,14 @@ impl<T> Initializables<T> {
     }
 }
 
-type InitializablesBuilder<T> = Box<
-    dyn for<'a> FnOnce(&'a mut InjectorBuilder) -> BoxFuture<'a, crate::Result<T>> + Send + Sync,
->;
-
-pub struct InitializablesInit<T>(Vec<InitializablesBuilder<T>>);
+pub struct InitializablesInit<T>(Vec<InitializableBuilder<T>>);
 
 impl<T> InitializablesInit<T> {
     pub fn add_with_init<I>(&mut self, init: I::Init)
     where
         I: Initializable + Into<T>,
     {
-        self.0
-            .push(Box::new(|builder| -> BoxFuture<'_, crate::Result<T>> {
-                Box::pin(async move { Ok(I::build(init, builder).await?.into()) })
-            }));
+        self.0.push(InitializableBuilder::new::<I>(init));
     }
 }
 
@@ -89,7 +85,7 @@ where
     async fn build(init: Self::Init, builder: &mut InjectorBuilder) -> crate::Result<Self> {
         let mut values = Vec::with_capacity(init.0.len());
         for init_builder in init.0 {
-            values.push(init_builder(builder).await?);
+            values.push(init_builder.build(builder).await?);
         }
         Ok(Self(values))
     }
@@ -115,6 +111,10 @@ impl<'a, T> Iterator for InitializablesIter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
 }
 
 impl<'a, T> IntoIterator for &'a Initializables<T> {
@@ -123,5 +123,112 @@ impl<'a, T> IntoIterator for &'a Initializables<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         InitializablesIter(self.0.iter())
+    }
+}
+
+/// Map of initializables, usually used for collecting objects implementing a trait.
+///
+/// See [`Initializables`] for a similar initializable and examples of how it may be used.
+pub struct InitializablesMap<K, T>(HashMap<K, T>);
+
+impl<K, T> InitializablesMap<K, T> {
+    pub fn get<Q>(&self, key: &Q) -> Option<&T>
+    where
+        Q: Hash + Eq,
+        K: Eq + Hash + Borrow<Q>,
+    {
+        self.0.get(key)
+    }
+
+    pub fn iter(&self) -> InitializablesMapIter<'_, K, T> {
+        InitializablesMapIter(self.0.iter())
+    }
+}
+
+pub struct InitializablesMapInit<K, T>(HashMap<K, InitializableBuilder<T>>);
+
+impl<K, T> InitializablesMapInit<K, T> {
+    pub fn insert_with_init<I>(&mut self, key: K, init: I::Init)
+    where
+        K: Eq + Hash,
+        I: Initializable + Into<T>,
+    {
+        self.0.insert(key, InitializableBuilder::new::<I>(init));
+    }
+}
+
+impl<K, T> Initializable for InitializablesMap<K, T>
+where
+    K: Eq + Hash + Send + Sync + 'static,
+    T: Send + Sync + 'static,
+{
+    type Init = InitializablesMapInit<K, T>;
+
+    async fn build(init: Self::Init, builder: &mut InjectorBuilder) -> crate::Result<Self> {
+        let mut initializables = HashMap::with_capacity(init.0.len());
+        for (k, initializable_builder) in init.0 {
+            initializables.insert(k, initializable_builder.build(builder).await?);
+        }
+        Ok(Self(initializables))
+    }
+}
+
+impl<K, T> NewInitValue for InitializablesMap<K, T>
+where
+    K: Eq + Hash + Send + Sync + 'static,
+    T: Send + Sync + 'static,
+{
+    type Error = Infallible;
+
+    async fn new_init(_: &mut InitInjector) -> Result<Self::Init, Self::Error> {
+        Ok(InitializablesMapInit(HashMap::new()))
+    }
+}
+
+/// Iterator over the items stored in [`InitializablesMap`]
+pub struct InitializablesMapIter<'a, K, T>(hash_map::Iter<'a, K, T>);
+
+impl<'a, K, T> Iterator for InitializablesMapIter<'a, K, T> {
+    type Item = (&'a K, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<'a, K, T> IntoIterator for &'a InitializablesMap<K, T> {
+    type Item = (&'a K, &'a T);
+    type IntoIter = InitializablesMapIter<'a, K, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// Helper that builds an initializable that is convertible to `T`.
+struct InitializableBuilder<T>(
+    #[expect(clippy::type_complexity)]
+    Box<
+        dyn for<'a> FnOnce(&'a mut InjectorBuilder) -> BoxFuture<'a, crate::Result<T>>
+            + Send
+            + Sync,
+    >,
+);
+
+impl<T> InitializableBuilder<T> {
+    fn new<I>(init: I::Init) -> Self
+    where
+        I: Initializable + Into<T>,
+    {
+        Self(Box::new(|builder| -> BoxFuture<'_, crate::Result<T>> {
+            Box::pin(async move { Ok(I::build(init, builder).await?.into()) })
+        }))
+    }
+    fn build(self, builder: &mut InjectorBuilder) -> BoxFuture<'_, crate::Result<T>> {
+        (self.0)(builder)
     }
 }
