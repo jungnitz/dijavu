@@ -2,7 +2,7 @@ use dijavu::{InitInjector, Initializable, initializables::Value};
 use dijavu_macros::Injectable;
 
 #[derive(Initializable)]
-#[inject(init(hook = init_hook::<T>))]
+#[inject(init(hook = init_hook::<T>, manual))]
 struct Test<T: Default + Send + Sync + 'static> {
     value: Value<T>,
 }
