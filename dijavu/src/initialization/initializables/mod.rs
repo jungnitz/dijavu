@@ -18,3 +18,24 @@ pub use depend::*;
 
 mod value;
 pub use value::*;
+
+use crate::{InitInjector, Initializable, InjectorBuilder, NewInitValue};
+
+impl<I: Initializable> Initializable for Option<I> {
+    type Init = Option<I::Init>;
+
+    async fn build(init: Self::Init, builder: &mut InjectorBuilder) -> crate::Result<Self> {
+        match init {
+            Some(init) => Ok(Some(I::build(init, builder).await?)),
+            None => Ok(None),
+        }
+    }
+}
+
+impl<I: NewInitValue> NewInitValue for Option<I> {
+    type Error = I::Error;
+
+    async fn new_init(injector: &mut InitInjector) -> Result<Self::Init, Self::Error> {
+        Ok(Some(I::new_init(injector).await?))
+    }
+}
