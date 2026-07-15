@@ -1,5 +1,5 @@
+use crate::initializables::build_fn::BuildFn;
 use crate::{InitInjector, Initializable, InjectorBuilder, NewInitValue};
-use futures::future::BoxFuture;
 use std::borrow::Borrow;
 use std::collections::{HashMap, hash_map};
 use std::convert::Infallible;
@@ -65,14 +65,14 @@ impl<T> Initializables<T> {
     }
 }
 
-pub struct InitializablesInit<T>(Vec<InitializableBuilder<T>>);
+pub struct InitializablesInit<T>(Vec<BuildFn<T>>);
 
 impl<T> InitializablesInit<T> {
     pub fn add_with_init<I>(&mut self, init: I::Init)
     where
         I: Initializable + Into<T>,
     {
-        self.0.push(InitializableBuilder::new::<I>(init));
+        self.0.push(BuildFn::new_via_initializable::<I>(init));
     }
 }
 
@@ -145,7 +145,7 @@ impl<K, T> InitializablesMap<K, T> {
     }
 }
 
-pub struct InitializablesMapInit<K, T>(HashMap<K, InitializableBuilder<T>>);
+pub struct InitializablesMapInit<K, T>(HashMap<K, BuildFn<T>>);
 
 impl<K, T> InitializablesMapInit<K, T> {
     pub fn insert_with_init<I>(&mut self, key: K, init: I::Init)
@@ -153,7 +153,8 @@ impl<K, T> InitializablesMapInit<K, T> {
         K: Eq + Hash,
         I: Initializable + Into<T>,
     {
-        self.0.insert(key, InitializableBuilder::new::<I>(init));
+        self.0
+            .insert(key, BuildFn::new_via_initializable::<I>(init));
     }
 }
 
@@ -206,29 +207,5 @@ impl<'a, K, T> IntoIterator for &'a InitializablesMap<K, T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
-    }
-}
-
-/// Helper that builds an initializable that is convertible to `T`.
-struct InitializableBuilder<T>(
-    #[expect(clippy::type_complexity)]
-    Box<
-        dyn for<'a> FnOnce(&'a mut InjectorBuilder) -> BoxFuture<'a, crate::Result<T>>
-            + Send
-            + Sync,
-    >,
-);
-
-impl<T> InitializableBuilder<T> {
-    fn new<I>(init: I::Init) -> Self
-    where
-        I: Initializable + Into<T>,
-    {
-        Self(Box::new(|builder| -> BoxFuture<'_, crate::Result<T>> {
-            Box::pin(async move { Ok(I::build(init, builder).await?.into()) })
-        }))
-    }
-    fn build(self, builder: &mut InjectorBuilder) -> BoxFuture<'_, crate::Result<T>> {
-        (self.0)(builder)
     }
 }

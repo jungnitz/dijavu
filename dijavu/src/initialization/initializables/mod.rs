@@ -1,7 +1,9 @@
 //! A collection of useful [`Initializable`](crate::Initializable) implementations.
 
 mod drop_value;
+
 pub use drop_value::*;
+use std::convert::Infallible;
 
 #[allow(
     clippy::module_inception,
@@ -15,6 +17,9 @@ pub use inject::*;
 
 mod depend;
 pub use depend::*;
+
+mod build_fn;
+pub use build_fn::*;
 
 mod value;
 pub use value::*;
@@ -32,10 +37,10 @@ impl<I: Initializable> Initializable for Option<I> {
     }
 }
 
-impl<I: NewInitValue> NewInitValue for Option<I> {
-    type Error = I::Error;
+impl<I: Initializable> NewInitValue for Option<I> {
+    type Error = Infallible;
 
-    async fn new_init(injector: &mut InitInjector) -> Result<Self::Init, Self::Error> {
-        Ok(Some(I::new_init(injector).await?))
+    async fn new_init(_injector: &mut InitInjector) -> Result<Self::Init, Self::Error> {
+        Ok(None)
     }
 }
