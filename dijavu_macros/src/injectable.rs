@@ -6,6 +6,7 @@ use syn::DeriveInput;
 
 pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
     let init = StructOfInitializables::new(input, "InitData")?;
+    init.args.check_for_injectable()?;
     let ident = &init.args.ident;
     let (impl_gen, ty_gen, where_clause) = init.args.generics.split_for_impl();
 
