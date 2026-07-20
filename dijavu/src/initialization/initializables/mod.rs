@@ -29,10 +29,19 @@ use crate::{InitInjector, Initializable, InjectorBuilder, NewInitValue};
 impl<I: Initializable> Initializable for Option<I> {
     type Init = Option<I::Init>;
 
-    async fn build(init: Self::Init, builder: &mut InjectorBuilder) -> crate::Result<Self> {
-        match init {
-            Some(init) => Ok(Some(I::build(init, builder).await?)),
-            None => Ok(None),
+    #[expect(
+        clippy::manual_async_fn,
+        reason = "prevent higher ranked lifetime error"
+    )]
+    fn build(
+        init: Self::Init,
+        builder: &mut InjectorBuilder,
+    ) -> impl Future<Output = crate::Result<Self>> + Send {
+        async move {
+            match init {
+                Some(init) => Ok(Some(I::build(init, builder).await?)),
+                None => Ok(None),
+            }
         }
     }
 }

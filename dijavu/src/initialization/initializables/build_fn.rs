@@ -39,8 +39,15 @@ impl<T> BuildFn<T> {
 impl<T: 'static> Initializable for FromBuildFn<T> {
     type Init = BuildFn<T>;
 
-    async fn build(init: Self::Init, builder: &mut InjectorBuilder) -> crate::Result<Self> {
-        Ok(Self(init.build(builder).await?))
+    #[expect(
+        clippy::manual_async_fn,
+        reason = "prevent higher ranked lifetime error"
+    )]
+    fn build(
+        init: Self::Init,
+        builder: &mut InjectorBuilder,
+    ) -> impl Future<Output = crate::Result<Self>> + Send {
+        async move { Ok(Self(init.build(builder).await?)) }
     }
 }
 
