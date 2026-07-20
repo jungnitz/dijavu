@@ -17,7 +17,7 @@ where
         Self(InjectableInitInner::References(injector, data))
     }
 
-    fn new_assert_initialized(injector: &'a mut InitInjector) -> Self {
+    pub(super) fn new_assert_initialized(injector: &'a mut InitInjector) -> Self {
         Self(InjectableInitInner::Injector(injector))
     }
 

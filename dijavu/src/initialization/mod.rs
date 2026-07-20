@@ -75,6 +75,13 @@ impl InitInjector {
         Ok(I::new_init(init))
     }
 
+    pub fn get_assert_initialized<I>(&mut self) -> I::Init<'_>
+    where
+        I: Injectable,
+    {
+        I::new_init(InjectableInit::<I>::new_assert_initialized(self))
+    }
+
     fn get_slot<I>(&mut self) -> Slot<I>
     where
         I: Injectable,
