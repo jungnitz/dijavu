@@ -147,14 +147,24 @@ impl<K, T> InitializablesMap<K, T> {
 
 pub struct InitializablesMapInit<K, T>(HashMap<K, BuildFn<T>>);
 
-impl<K, T> InitializablesMapInit<K, T> {
+impl<K, T> InitializablesMapInit<K, T>
+where
+    K: Eq + Hash,
+{
     pub fn insert_with_init<I>(&mut self, key: K, init: I::Init)
     where
-        K: Eq + Hash,
         I: Initializable + Into<T>,
     {
         self.0
             .insert(key, BuildFn::new_via_initializable::<I>(init));
+    }
+
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        self.0.contains_key(key)
     }
 }
 
