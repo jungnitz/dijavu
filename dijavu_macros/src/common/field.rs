@@ -63,7 +63,7 @@ impl InitializableField {
             self.args.ident
         );
         let init = if let Some(init) = &self.init {
-            quote!(#init)
+            quote!((#init))
         } else {
             quote!(<#ty as dijavu::NewInitValue>::new_init)
         };
