@@ -186,3 +186,6 @@ async fn self_ref() -> Result<()> {
 
     Ok(())
 }
+
+#[derive(Injectable)]
+struct UnitStruct;

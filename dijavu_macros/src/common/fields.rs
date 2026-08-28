@@ -8,13 +8,23 @@ use syn::Fields;
 pub struct InitializableFields {
     args: Rc<DeriveArgs>,
     fields: Vec<InitializableField>,
-    named: bool,
+    ty: Type,
+}
+
+enum Type {
+    Named,
+    Tuple,
+    Unit,
 }
 
 impl InitializableFields {
     pub fn from_fields(config: Rc<DeriveArgs>, fields: Fields) -> syn::Result<Self> {
         Ok(Self {
-            named: matches!(fields, Fields::Named(_)),
+            ty: match fields {
+                Fields::Named(_) => Type::Named,
+                Fields::Unnamed(_) => Type::Tuple,
+                Fields::Unit => Type::Unit,
+            },
             fields: fields
                 .into_iter()
                 .enumerate()
@@ -27,12 +37,12 @@ impl InitializableFields {
     fn field_decls(&self, defs: impl Fn(&InitializableField) -> TokenStream) -> TokenStream {
         let defs = self.fields.iter().map(defs);
         let where_clause = self.args.generics.split_for_impl().2;
-        if self.named {
-            quote!(#where_clause {
+        match self.ty {
+            Type::Named => quote!(#where_clause {
                 #(#defs,)*
-            })
-        } else {
-            quote!((#(#defs,)*) #where_clause;)
+            }),
+            Type::Tuple => quote!((#(#defs,)*) #where_clause;),
+            Type::Unit => quote!(;),
         }
     }
 
@@ -41,14 +51,14 @@ impl InitializableFields {
         field_construct: impl Fn(&InitializableField) -> TokenStream,
     ) -> TokenStream {
         let fields = self.fields.iter().map(field_construct);
-        if self.named {
-            quote!({
+        match self.ty {
+            Type::Named => quote!({
                 #(#fields,)*
-            })
-        } else {
-            quote!((
+            }),
+            Type::Tuple => quote!((
                 #(#fields,)*
-            ))
+            )),
+            Type::Unit => TokenStream::new(),
         }
     }
 
