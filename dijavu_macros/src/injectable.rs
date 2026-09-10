@@ -69,6 +69,7 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
         #init_data_struct_attrs
         #init_data_struct_def
 
+        #[allow(unreachable_code)]
         const _: () = {
             impl<#impl_gen> dijavu::Injectable for #ident<#ty_gen> #where_clause {
                 type Error = dijavu::Error;

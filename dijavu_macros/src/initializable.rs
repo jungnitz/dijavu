@@ -50,6 +50,7 @@ pub fn derive_initializable(input: DeriveInput) -> Result<TokenStream, syn::Erro
         #init_struct_def_attr
         #init_struct_def
 
+        #[allow(unreachable_code)]
         const _: () = {
             impl<#impl_gen> dijavu::Initializable for #ident<#ty_gen> #where_clause {
                 type Init = #init_struct_name<#ty_gen>;
