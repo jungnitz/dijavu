@@ -51,6 +51,8 @@ pub enum ErrorKind {
     BindingConflict(BindingConflictError),
     /// See [`UnboundError`].
     Unbound(UnboundError),
+    /// See [`MissingInputError`].
+    MissingInput(MissingInputError),
     /// An error created via [`Error::custom`].
     Custom(Box<dyn StdError + Send + Sync + 'static>),
 }
@@ -120,5 +122,25 @@ impl UnboundError {
 impl From<UnboundError> for Error {
     fn from(value: UnboundError) -> Self {
         Self::new(ErrorKind::Unbound(value))
+    }
+}
+
+/// An injectable requires an input that has not been set
+#[derive(Debug, thiserror::Error)]
+#[error("`{injectable}` requires the input `{input}`, which has not been set")]
+pub struct MissingInputError {
+    input: &'static str,
+    injectable: Cow<'static, str>,
+}
+
+impl MissingInputError {
+    pub(crate) fn new(input: &'static str, injectable: Cow<'static, str>) -> Self {
+        Self { input, injectable }
+    }
+}
+
+impl From<MissingInputError> for Error {
+    fn from(value: MissingInputError) -> Self {
+        Self::new(ErrorKind::MissingInput(value))
     }
 }

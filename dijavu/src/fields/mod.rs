@@ -2,10 +2,12 @@
 
 mod depend;
 mod inject;
+mod input;
 mod value;
 
 pub use depend::*;
 pub use inject::*;
+pub use input::*;
 pub use value::*;
 
 use crate::{AssembleContext, DeclareContext, Error, Injectable, PrepareContext, Visitable};

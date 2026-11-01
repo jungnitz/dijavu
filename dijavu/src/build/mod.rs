@@ -2,6 +2,7 @@ mod assemble;
 mod bindings;
 mod declare;
 mod dependency_graph;
+mod inputs;
 mod prepare;
 mod registry;
 mod value_per_injectable;
@@ -16,7 +17,8 @@ use crate::{
     Bindable, Error, Injectable, Injector,
     build::{
         assemble::AssembleStep, bindings::Bindings, declare::DeclareStep,
-        dependency_graph::DependencyGraph, prepare::PrepareStep, registry::Registry,
+        dependency_graph::DependencyGraph, inputs::Inputs, prepare::PrepareStep,
+        registry::Registry,
     },
     error::BindingConflictError,
 };
@@ -50,6 +52,13 @@ impl Builder {
         Ok(self)
     }
 
+    /// Sets the value that [`Input<T>`](crate::fields::Input) provides, replacing any previous
+    /// value of the same type.
+    pub fn set_input<T: Send + Sync + 'static>(&mut self, value: T) -> &mut Self {
+        self.state.inputs.set(value);
+        self
+    }
+
     /// Runs all build steps and returns the resulting [`Injector`].
     pub async fn build(self) -> Result<Injector, Error> {
         let state = self.state.declare()?;
@@ -66,6 +75,7 @@ pub struct BuildState<Step> {
     dependency_graph: DependencyGraph,
     bindings: Bindings,
     registry: Registry,
+    inputs: Inputs,
     step: Step,
 }
 
@@ -76,6 +86,7 @@ impl<Step> BuildState<Step> {
                 dependency_graph: self.dependency_graph,
                 bindings: self.bindings,
                 registry: self.registry,
+                inputs: self.inputs,
                 step: new_step,
             },
             self.step,

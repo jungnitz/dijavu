@@ -7,6 +7,8 @@ use crate::{
         dependency_graph::{DependencyType, NodeIndex},
         prepare::Preparations,
     },
+    error::MissingInputError,
+    fields::Input,
     refs::Injectables,
     refs::Ref,
 };
@@ -36,6 +38,13 @@ impl<'ctx, I: Injectable> AssembleContext<'ctx, I> {
     /// [`DeclareContext::register`]: crate::DeclareContext::register
     pub fn registered<R: Registered>(&self) -> RegisteredValues<R> {
         self.state.registry.get()
+    }
+
+    /// Returns the value set via [`Builder::set_input`](crate::Builder::set_input).
+    ///
+    /// Fails if the input has not been set.
+    pub fn input<T: Send + Sync + 'static>(&self) -> Result<Input<T>, MissingInputError> {
+        self.state.inputs.get::<I, T>()
     }
 
     /// Returns a reference to `To`, which will be enabled once the build has finished.

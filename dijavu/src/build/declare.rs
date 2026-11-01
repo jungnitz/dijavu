@@ -9,7 +9,8 @@ use crate::{
         BuildState, Registered, dependency_graph::NodeIndex,
         value_per_injectable::ValuePerInjectable,
     },
-    error::{BindingConflictError, UnboundError},
+    error::{BindingConflictError, MissingInputError, UnboundError},
+    fields::Input,
 };
 
 use super::dependency_graph::DependencyType;
@@ -141,6 +142,13 @@ where
     pub fn register<R: Registered>(&mut self, value: R) {
         self.add::<R::Consumer>();
         self.state.registry.register(value);
+    }
+
+    /// Returns the value set via [`Builder::set_input`](crate::Builder::set_input).
+    ///
+    /// Fails if the input has not been set.
+    pub fn input<T: Send + Sync + 'static>(&self) -> Result<Input<T>, MissingInputError> {
+        self.state.inputs.get::<I, T>()
     }
 }
 

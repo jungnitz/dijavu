@@ -9,7 +9,8 @@ use crate::{
         BuildState, Registered, RegisteredValues, declare::Declarations,
         dependency_graph::NodeIndex, value_per_injectable::ValuePerInjectable,
     },
-    fields::DependToken,
+    error::MissingInputError,
+    fields::{DependToken, Input},
     injectable::Preparing,
 };
 
@@ -37,6 +38,13 @@ impl<'ctx, I: Injectable> PrepareContext<'ctx, I> {
     /// [`DeclareContext::register`]: crate::DeclareContext::register
     pub fn registered<R: Registered>(&self) -> RegisteredValues<R> {
         self.state.registry.get()
+    }
+
+    /// Returns the value set via [`Builder::set_input`](crate::Builder::set_input).
+    ///
+    /// Fails if the input has not been set.
+    pub fn input<T: Send + Sync + 'static>(&self) -> Result<Input<T>, MissingInputError> {
+        self.state.inputs.get::<I, T>()
     }
 
     /// Returns the [`Preparing`] state of `Other`, which allows configuring it.
