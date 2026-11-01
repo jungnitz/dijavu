@@ -1,0 +1,5 @@
+error: injectables and their fields must be `'static`, so they can't have lifetime parameters
+ --> tests/ui/injectable_lifetime.rs:4:20
+  |
+4 | struct HasLifetime<'a> {
+  |                    ^^

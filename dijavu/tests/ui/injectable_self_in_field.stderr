@@ -1,0 +1,5 @@
+error: `Self` is not supported in field types here, use the name of the struct
+ --> tests/ui/injectable_self_in_field.rs:5:21
+  |
+5 |     this: Value<Vec<Self>>,
+  |                     ^^^^

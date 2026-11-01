@@ -1,0 +1,5 @@
+error: unknown `visitable` attribute, expected `skip`
+ --> tests/ui/visitable_unknown_attribute.rs:5:17
+  |
+5 |     #[visitable(nope)]
+  |                 ^^^^

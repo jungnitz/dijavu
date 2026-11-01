@@ -1,0 +1,5 @@
+error: unexpected end of input, expected an expression
+ --> tests/ui/injectable_register_not_an_expression.rs:4:26
+  |
+4 | #[injectable(register(1 +))]
+  |                          ^

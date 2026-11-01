@@ -1,0 +1,5 @@
+error: the name `ctx` is reserved for the context in the generated state struct
+ --> tests/ui/injectable_ctx_field.rs:5:5
+  |
+5 |     ctx: Value<u32>,
+  |     ^^^^^^^^^^^^^^^

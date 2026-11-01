@@ -1,0 +1,246 @@
+use std::{
+    any::{TypeId, type_name},
+    marker::PhantomData,
+};
+
+use crate::{
+    Bindable, Error, Injectable, Target,
+    build::{
+        BuildState, Registered, dependency_graph::NodeIndex,
+        value_per_injectable::ValuePerInjectable,
+    },
+    error::{BindingConflictError, UnboundError},
+};
+
+use super::dependency_graph::DependencyType;
+
+/// Gives access to the build during the declare step.
+pub struct DeclareContext<'a, I: Injectable> {
+    state: &'a mut BuildState<DeclareStep>,
+    node_index: NodeIndex,
+    _i: PhantomData<I>,
+}
+
+impl<'a, I> DeclareContext<'a, I>
+where
+    I: Injectable,
+{
+    /// Returns an owned context borrowing from this one, e.g. to pass it to multiple fields.
+    pub fn as_owned(&mut self) -> DeclareContext<'_, I> {
+        DeclareContext {
+            state: self.state,
+            node_index: self.node_index,
+            _i: PhantomData,
+        }
+    }
+
+    pub(crate) fn add<Other: Injectable>(&mut self) {
+        self.state.get_or_add::<Other>();
+    }
+
+    pub(crate) fn add_hard_dependency<To: Injectable>(&mut self) {
+        let to_index = self.state.get_or_add::<To>();
+        self.state
+            .dependency_graph
+            .add_dependency(self.node_index, to_index, DependencyType::Hard);
+    }
+
+    /// Adds a dependency on the injectable that `To` is bound to.
+    pub(crate) fn add_bound_dependency<To: ?Sized + Target>(&mut self, typ: DependencyType) {
+        self.state.step.bound_dependencies.push(BoundDependency {
+            from_idx: self.node_index,
+            to_type_id: TypeId::of::<To>(),
+            to_name: type_name::<To>(),
+            typ,
+        });
+    }
+
+    /// Binds `B` (e.g. a trait object) to the injectable `Impl`, so that `Inject<B>` and
+    /// `Depend<B>` reference `Impl`.
+    ///
+    /// Fails if `B` is already bound to another injectable.
+    pub fn bind<B: ?Sized + Bindable<Impl>, Impl: Injectable>(
+        &mut self,
+    ) -> Result<(), BindingConflictError> {
+        self.state.bind::<B, Impl>()
+    }
+
+    /// Registers a value that can be read via [`PrepareContext::registered`] and
+    /// [`AssembleContext::registered`], by any injectable.
+    ///
+    /// Values are grouped by their type `R`, which has to implement [`Registered`]. To register
+    /// different types implementing a trait, use a trait object as `R`, for example
+    /// `Box<dyn Plugin>`.
+    ///
+    /// This also adds [`Registered::Consumer`] to the build.
+    ///
+    /// Registered values cannot be read while declaring, as not all of them are known yet. The
+    /// injectable registering a value still has to be part of the build, so it must be referenced
+    /// or added to the [`Builder`](crate::Builder).
+    ///
+    /// [`PrepareContext::registered`]: crate::PrepareContext::registered
+    /// [`AssembleContext::registered`]: crate::AssembleContext::registered
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use dijavu::{*, fields::Value, state::Declare};
+    ///
+    /// pub trait Plugin: Send + Sync {
+    ///     fn name(&self) -> &str;
+    /// }
+    ///
+    /// impl Registered for Box<dyn Plugin> {
+    ///     type Consumer = PluginNames;
+    /// }
+    ///
+    /// struct Logging;
+    ///
+    /// impl Plugin for Logging {
+    ///     fn name(&self) -> &str {
+    ///         "logging"
+    ///     }
+    /// }
+    ///
+    /// #[derive(Injectable)]
+    /// #[injectable(declare = Self::add_plugin)]
+    /// struct LoggingModule;
+    ///
+    /// impl LoggingModule {
+    ///     fn add_plugin(
+    ///         _state: &mut LoggingModuleState<Declare>,
+    ///         mut ctx: DeclareContext<'_, Self>,
+    ///     ) -> Result<(), Error> {
+    ///         ctx.register::<Box<dyn Plugin>>(Box::new(Logging));
+    ///         Ok(())
+    ///     }
+    /// }
+    ///
+    /// #[derive(Injectable)]
+    /// #[injectable(prepare = Self::collect_names)]
+    /// pub struct PluginNames {
+    ///     names: Value<Vec<String>>,
+    /// }
+    ///
+    /// impl PluginNames {
+    ///     async fn collect_names(
+    ///         state: &mut PluginNamesState<Declare>,
+    ///         ctx: PrepareContext<'_, Self>,
+    ///     ) -> Result<(), Error> {
+    ///         let plugins = ctx.registered::<Box<dyn Plugin>>();
+    ///         state.names = plugins.iter().map(|plugin| plugin.name().to_owned()).collect();
+    ///         Ok(())
+    ///     }
+    /// }
+    ///
+    /// let mut builder = Builder::new();
+    /// builder.add::<LoggingModule>();
+    /// let injector = futures::executor::block_on(builder.build()).unwrap();
+    /// assert_eq!(*injector.get::<PluginNames>().names, ["logging"]);
+    /// ```
+    pub fn register<R: Registered>(&mut self, value: R) {
+        self.add::<R::Consumer>();
+        self.state.registry.register(value);
+    }
+}
+
+type DeclareOneFn = dyn FnOnce(&mut BuildState<DeclareStep>) -> Result<(), Error> + Send;
+
+#[derive(Default)]
+pub(super) struct DeclareStep {
+    pending: Vec<Box<DeclareOneFn>>,
+    declarations: Declarations,
+    bound_dependencies: Vec<BoundDependency>,
+}
+
+/// A dependency on a bound [`Target`].
+struct BoundDependency {
+    from_idx: NodeIndex,
+    to_type_id: TypeId,
+    to_name: &'static str,
+    typ: DependencyType,
+}
+
+impl BuildState<DeclareStep> {
+    fn get_or_add<I: Injectable>(&mut self) -> NodeIndex {
+        let (node_index, created) = self.dependency_graph.get_or_add::<I>();
+        if created {
+            self.step
+                .pending
+                .push(Box::new(move |state| state.declare_one::<I>(node_index)));
+        }
+        node_index
+    }
+
+    pub(super) fn add<I: Injectable>(&mut self) {
+        self.get_or_add::<I>();
+    }
+
+    pub(super) fn bind<B: ?Sized + Bindable<I>, I: Injectable>(
+        &mut self,
+    ) -> Result<(), BindingConflictError> {
+        // check first, a rejected injectable must not be added
+        self.bindings.check_conflict::<B, I>()?;
+        let node_index = self.get_or_add::<I>();
+        self.bindings.bind::<B, I>(node_index);
+        Ok(())
+    }
+
+    pub(super) fn declare(mut self) -> Result<BuildState<Declarations>, Error> {
+        while let Some(pending) = self.step.pending.pop() {
+            pending(&mut self)?;
+        }
+        // there should exist a declaration for every injectable
+        assert_eq!(
+            self.dependency_graph.node_count(),
+            self.step.declarations.len()
+        );
+        // all bindings exist now, so create the necessary hard dependencies
+        for dependency in &self.step.bound_dependencies {
+            let Some(to_index) = self.bindings.get_index_by_type_id(dependency.to_type_id) else {
+                let from_name = self
+                    .dependency_graph
+                    .get(dependency.from_idx)
+                    .name()
+                    .clone();
+                return Err(UnboundError::new(dependency.to_name, from_name).into());
+            };
+            // soft dependencies are added when assembling, like for injectables
+            if let DependencyType::Hard = dependency.typ {
+                self.dependency_graph.add_dependency(
+                    dependency.from_idx,
+                    to_index,
+                    DependencyType::Hard,
+                );
+            }
+        }
+        Ok(self.map_step(|step, _| step.declarations))
+    }
+
+    fn declare_one<I: Injectable>(&mut self, node_index: NodeIndex) -> Result<(), Error> {
+        let declaration = I::declare(DeclareContext::<I> {
+            state: self,
+            node_index,
+            _i: PhantomData,
+        })?;
+        self.step.declarations.insert::<I>(node_index, declaration);
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub(super) struct Declarations(ValuePerInjectable);
+
+impl Declarations {
+    pub(super) fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub(super) fn insert<T: Injectable>(&mut self, index: NodeIndex, declaration: T::Declaration) {
+        self.0.insert::<T::Declaration>(index, declaration);
+    }
+
+    pub(super) fn remove<T: Injectable>(&mut self, index: NodeIndex) -> T::Declaration {
+        self.0.remove::<T::Declaration>(index)
+    }
+}

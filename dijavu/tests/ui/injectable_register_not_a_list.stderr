@@ -1,0 +1,5 @@
+error: expected `(`
+ --> tests/ui/injectable_register_not_a_list.rs:4:23
+  |
+4 | #[injectable(register = 1)]
+  |                       ^

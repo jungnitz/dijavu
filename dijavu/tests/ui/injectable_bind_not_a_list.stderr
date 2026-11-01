@@ -1,0 +1,5 @@
+error: expected `(`
+ --> tests/ui/injectable_bind_not_a_list.rs:4:19
+  |
+4 | #[injectable(bind = 1)]
+  |                   ^

@@ -1,0 +1,77 @@
+use std::{marker::PhantomData, ops::Deref};
+
+use crate::{
+    AssembleContext, DeclareContext, Error, Injectable, InjectableField, PrepareContext,
+    RefVisitor, Target, Visitable, build::DependencyType, refs::Ref,
+};
+
+/// A token that indicates that an [`Injectable`] will be built as a result of the current
+/// initialization process.
+///
+/// You can obtain one of these tokens by adding a [`Inject`] field for `T` to your [`Injectable`].
+// Implementation Note: this token makes absolutely no **guarantees** about anything. It's just a
+// hint to the user on what he needs to do (add an `Inject` field) to achieve certain things. Do not
+// rely on it for any safety reasoning etc.
+pub struct InjectToken<T: ?Sized + Target>(PhantomData<T>);
+
+impl<T: ?Sized + Target> InjectToken<T> {
+    pub(crate) fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<T: ?Sized + Target> Clone for InjectToken<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T: ?Sized + Target> Copy for InjectToken<T> {}
+
+/// A reference to another injectable that may only be used once the build has finished.
+///
+/// In contrast to [`Depend`](super::Depend), this does not impose any order on building the
+/// injectables, so cyclic references are possible. Dereferencing panics until the build has
+/// finished.
+///
+/// `T` can also be a trait object that is bound to an injectable (see [`Target`]).
+pub struct Inject<T: ?Sized + Target>(Ref<T>);
+
+impl<I: Injectable, T: ?Sized + Target> InjectableField<I> for Inject<T> {
+    type Declaration = InjectToken<T>;
+    type Preparation = InjectToken<T>;
+
+    fn declare(mut init: DeclareContext<'_, I>) -> Result<Self::Declaration, Error> {
+        T::declare(&mut init, DependencyType::Soft);
+        Ok(InjectToken::new())
+    }
+
+    async fn prepare(
+        declaration: Self::Declaration,
+        _init: PrepareContext<'_, I>,
+    ) -> Result<Self::Preparation, Error> {
+        Ok(declaration)
+    }
+
+    async fn assemble(
+        _init: Self::Preparation,
+        mut builder: AssembleContext<'_, I>,
+    ) -> Result<Self, Error> {
+        Ok(Inject(T::get_ref(&mut builder)))
+    }
+}
+
+// SAFETY: the reference can only be moved out of `Inject` through `&mut self`
+unsafe impl<T: ?Sized + Target> Visitable for Inject<T> {
+    fn visit_refs(&mut self, visitor: &mut RefVisitor<'_>) {
+        visitor.visit_ref(&mut self.0);
+    }
+}
+
+impl<T: ?Sized + Target> Deref for Inject<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}

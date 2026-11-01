@@ -4,18 +4,20 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
+rust-version = "1.99.1"
 license = "MIT"
 readme = "README.md"
 repository = "https://codeberg.org/jungnik/dijavu"
 
 [workspace.dependencies]
 rustc-hash = "2"
-ctor = "1"
-anyhow = "1"
 futures = "0.3"
+petgraph = { version = "0.8.3", default-features = false }
 dijavu_macros = { path = "dijavu_macros", version = "0.0.1" }
+thiserror = "2"
+trybuild = "1"
 
-syn = "2"
+syn = { version = "2", features = ["full"] }
 darling = "0.23"
 proc-macro2 = "1"
 quote = "1"
