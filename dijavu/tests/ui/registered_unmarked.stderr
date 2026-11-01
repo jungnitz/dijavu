@@ -1,0 +1,20 @@
+error[E0277]: the trait bound `Arc<dyn Plugin>: Registered` is not satisfied
+  --> tests/ui/registered_unmarked.rs:18:34
+   |
+18 |         let _ = ctx.registered::<std::sync::Arc<dyn Plugin>>();
+   |                     ----------   ^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Registered` is not implemented for `Arc<dyn Plugin>`
+   |                     |
+   |                     required by a bound introduced by this call
+   |
+help: the trait `Registered` is implemented for `Box<(dyn Plugin + 'static)>`
+  --> tests/ui/registered_unmarked.rs:5:1
+   |
+ 5 | impl Registered for Box<dyn Plugin> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `PrepareContext::<'ctx, I>::registered`
+  --> src/build/prepare.rs
+   |
+   | impl<'ctx, I: Injectable> PrepareContext<'ctx, I> {
+...
+   |     pub fn registered<R: Registered>(&self) -> RegisteredValues<R> {
+   |                          ^^^^^^^^^^ required by this bound in `PrepareContext::<'ctx, I>::registered`

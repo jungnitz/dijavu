@@ -4,6 +4,7 @@ version = "0.0.1"
 description = "Macros for dijavu"
 
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 readme.workspace = true
 repository.workspace = true

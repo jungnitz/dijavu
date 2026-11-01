@@ -1,0 +1,20 @@
+error[E0277]: the trait bound `Box<MyPlugin>: Registered` is not satisfied
+  --> tests/ui/register_unmarked.rs:23:22
+   |
+23 |         ctx.register(Box::new(MyPlugin));
+   |             -------- ^^^^^^^^^^^^^^^^^^ the trait `Registered` is not implemented for `Box<MyPlugin>`
+   |             |
+   |             required by a bound introduced by this call
+   |
+help: the trait `Registered` is implemented for `Box<dyn Plugin>`
+  --> tests/ui/register_unmarked.rs:5:1
+   |
+ 5 | impl Registered for Box<dyn Plugin> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `DeclareContext::<'a, I>::register`
+  --> src/build/declare.rs
+   |
+   | impl<'a, I> DeclareContext<'a, I>
+...
+   |     pub fn register<R: Registered>(&mut self, value: R) {
+   |                        ^^^^^^^^^^ required by this bound in `DeclareContext::<'a, I>::register`

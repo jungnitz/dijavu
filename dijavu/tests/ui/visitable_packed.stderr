@@ -1,0 +1,5 @@
+error: `Visitable` cannot be derived for packed structs
+ --> tests/ui/visitable_packed.rs:4:8
+  |
+4 | #[repr(packed)]
+  |        ^^^^^^

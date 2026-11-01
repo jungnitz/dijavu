@@ -1,0 +1,78 @@
+# The action below is only used to install rustup. rustup then installs and uses the toolchain from
+# `rust-toolchain.toml`, unless `RUSTUP_TOOLCHAIN` is set.
+name: ci
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  fmt:
+    runs-on: docker
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install rustup
+        uses: https://github.com/dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - run: cargo fmt --all --check
+  test:
+    runs-on: docker
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install rustup
+        uses: https://github.com/dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - run: cargo build --workspace --verbose
+      - run: cargo test --workspace --verbose
+  # The expected compiler output of the `ui` test only matches the toolchain from `rust-toolchain.toml`.
+  test-other-toolchains:
+    runs-on: docker
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
+    strategy:
+      matrix:
+        toolchain: [1.99.1, stable, beta, nightly]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: https://github.com/dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - run: cargo build --workspace --verbose
+      - run: cargo test --workspace --verbose -- --exact --skip ui
+  miri:
+    runs-on: docker
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install rustup
+        uses: https://github.com/dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - run: cargo miri setup
+      - run: cargo miri test --workspace
+  doc:
+    runs-on: docker
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install rustup
+        uses: https://github.com/dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps

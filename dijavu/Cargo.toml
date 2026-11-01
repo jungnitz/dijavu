@@ -4,6 +4,7 @@ version = "0.0.1"
 description = "Two-phased dependency injection"
 
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 readme.workspace = true
 repository.workspace = true
@@ -11,10 +12,10 @@ repository.workspace = true
 [dependencies]
 futures = { workspace = true }
 rustc-hash = { workspace = true }
-ctor = { workspace = true }
-anyhow = { workspace = true }
 dijavu_macros = { workspace = true }
+petgraph = { workspace = true }
+thiserror = { workspace = true }
+
 
 [dev-dependencies]
-tokio = { version = "1.50", features = ["macros", "rt"] }
-tokio-test = { version = "0.4" }
+trybuild = { workspace = true }

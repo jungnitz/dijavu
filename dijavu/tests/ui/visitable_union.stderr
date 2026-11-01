@@ -1,0 +1,5 @@
+error: `Visitable` cannot be derived for unions
+ --> tests/ui/visitable_union.rs:4:1
+  |
+4 | union NotVisitable {
+  | ^^^^^

@@ -1,75 +1,68 @@
 #![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
 
-extern crate self as dijavu;
-
 mod build;
-pub use self::build::InjectorBuilder;
-
-mod injector;
-pub use self::injector::Injector;
-
-/// Container for storing heterogeneous values via key types
-pub mod data;
-#[doc(inline)]
-pub use self::data::{Data, DataKey};
-
-mod error;
-pub use self::error::{Error, Result};
-
-/// Global hooks into the application lifecycle
-pub mod hooks;
-
-mod initialization;
-pub use self::initialization::{
-    InitInjector, Initializable, InjectableInit, NewInitValue, initializables,
-};
-
+pub mod error;
+pub mod fields;
 mod injectable;
-pub use self::injectable::Injectable;
+mod injector;
+mod refs;
+pub mod state;
+mod target;
 
-mod on_start;
-pub use self::on_start::OnStart;
+pub use build::{
+    AssembleContext, Builder, DeclareContext, PrepareContext, PreparingHandle, Registered,
+    RegisteredValues,
+};
+#[doc(inline)]
+pub use error::Error;
+#[doc(inline)]
+pub use fields::InjectableField;
+pub use injectable::{Injectable, Preparing};
+pub use injector::Injector;
+pub use refs::{Bindable, RefVisitor, Visitable};
+pub use target::Target;
 
-use std::marker::PhantomData;
+/// Derives [`Injectable`] and [`Visitable`] for a struct whose fields all implement
+/// [`InjectableField`].
+///
+/// For a struct `Foo`, this also generates `FooState<S>`, which has the same fields as `Foo`, but
+/// holds the data of the build step `S` (see [`state`]) in each of them, as well as a `ctx` field
+/// (the last field for tuple structs). Add methods to `FooState<state::Preparing<'_>>` to allow
+/// other injectables to configure `Foo`, see [`PrepareContext::get`].
+///
+/// The following attributes can be used as `#[injectable(...)]` on the struct. All hooks return a
+/// `Result<(), E>` with `E: Into<Error>`.
+///
+/// - `declare = hook`: `fn(&mut FooState<Declare>, DeclareContext<'_, Foo>)`, runs after the
+///   fields have been declared
+/// - `bind(dyn Trait, ...)`: binds the given targets to this injectable
+/// - `register(expr, ...)`: registers the value of each expression after the `declare` hook, see
+///   [`DeclareContext::register`]. The type of the expression decides what is registered, so trait
+///   objects need a cast, like `Box::new(MyPlugin) as Box<dyn Plugin>`.
+/// - `prepare = hook`: `async fn(&mut FooState<Declare>, PrepareContext<'_, Foo>)`, runs before the
+///   fields are prepared
+/// - `assemble = hook`: `async fn(&mut FooState<Prepare>, AssembleContext<'_, Foo>)`, runs before
+///   the fields are assembled
+///
+/// Fields can be excluded from visiting via `#[visitable(skip)]`.
+///
+/// # Generics
+///
+/// Only the bounds written on the struct are used. Do not add a bound like
+/// `T: InjectableField<Foo<T>>`: proving it requires `Foo<T>: Injectable`, which would require the
+/// bound again, so using `Foo<u32>` fails with an overflow error. Use bounds that do not mention
+/// the injectable instead, like `T: Target` for an `Inject<T>` field.
+pub use dijavu_macros::Injectable;
 
-use crate::data::define_data_wrapper;
+/// Derives [`InjectableField`] and [`Visitable`] for a struct whose fields all implement
+/// [`InjectableField`].
+///
+/// This works like the derive macro for [`Injectable`](macro@Injectable), except that the generated
+/// state struct `FooState<I, S>` and the hooks are generic over the injectable `I` containing the
+/// field. `bind` is not supported, as binding requires an injectable.
+pub use dijavu_macros::InjectableField;
 
-define_data_wrapper!(
-    /// Data that is assembled during the initialization phase
-    pub InitData;
-);
-define_data_wrapper!(
-    /// Data that is assembled during the build phase and is available from the [`Injector`].
-    ///
-    /// Contains entries with key of type `InjectableKey` for all known injectables.
-    InjectablesData;
-);
-
-/// Prevents some trait functions to be called from non-dijavu-code.
-pub struct Restricted<T>(PhantomData<fn(T)>);
-
-impl<T> Restricted<T> {
-    fn new() -> Self {
-        Self(PhantomData)
-    }
-}
-
-struct InjectableDataKey<I>(PhantomData<I>);
-
-impl<I> DataKey for InjectableDataKey<I>
-where
-    I: Injectable,
-{
-    type Value = Option<I::Data>;
-}
-
-struct InjectableKey<I: Injectable>(PhantomData<I>);
-
-impl<I: Injectable> DataKey for InjectableKey<I> {
-    type Value = &'static I;
-}
-
-#[doc(hidden)]
-pub mod __private {
-    pub use ctor;
-}
+/// Derives [`Visitable`] by forwarding the visitor to every field.
+///
+/// Fields can be excluded via `#[visitable(skip)]`.
+pub use dijavu_macros::Visitable;

@@ -1,148 +1,93 @@
-mod slot;
+mod assemble;
+mod bindings;
+mod declare;
+mod dependency_graph;
+mod prepare;
+mod registry;
+mod value_per_injectable;
 
-pub(crate) use self::slot::Slot;
-use self::slot::SlotKey;
-use std::any::type_name;
+pub use self::assemble::AssembleContext;
+pub use self::declare::DeclareContext;
+pub(crate) use self::dependency_graph::DependencyType;
+pub use self::prepare::{PrepareContext, PreparingHandle};
+pub use self::registry::{Registered, RegisteredValues};
 
-#[cfg(doc)]
-use crate::Initializable;
-use crate::on_start::{DynOnStart, OnStart};
 use crate::{
-    Data, Error, InitData, Injectable, InjectableDataKey, InjectableKey, InjectablesData, Injector,
-    Restricted,
+    Bindable, Error, Injectable, Injector,
+    build::{
+        assemble::AssembleStep, bindings::Bindings, declare::DeclareStep,
+        dependency_graph::DependencyGraph, prepare::PrepareStep, registry::Registry,
+    },
+    error::BindingConflictError,
 };
-use futures::future::BoxFuture;
-use futures::stream::FuturesUnordered;
-use futures::{FutureExt, TryStreamExt};
-use std::marker::PhantomData;
 
-/// Manages the state of the build phase.
-///
-/// `InjectorBuilder` is used during the _build phase_ to assemble the [`Injector`] from
-/// initialization data.
-/// It provides two main interfaces to be used from [`Injectable::build`] or
-/// [`Initializable::build`]:
-/// - [`init_data_mut`](Self::init_data_mut) gives access to the final initialization data
-/// - [`on_start`](Self::on_start) allows registering hooks that are executed right after the
-///   `Injector` was built
-pub struct InjectorBuilder {
-    init_data: InitData,
-    slots: Data,
-    injectable_builders: Vec<Box<dyn InjectableBuilder>>,
-    on_start: Vec<Box<dyn DynOnStart>>,
+/// Collects the injectables and bindings that an [`Injector`] is built from.
+#[derive(Default)]
+pub struct Builder {
+    state: BuildState<DeclareStep>,
 }
 
-impl InjectorBuilder {
-    #[must_use]
-    pub(crate) fn new() -> Self {
-        Self {
-            init_data: InitData::default(),
-            slots: Data::default(),
-            injectable_builders: Vec::default(),
-            on_start: Vec::default(),
-        }
+impl Builder {
+    /// Creates a builder without any injectables.
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// Returns the current initialization data.
-    pub fn init_data_mut(&mut self) -> &mut InitData {
-        &mut self.init_data
+    /// Adds the injectable `I`, which also adds everything it references.
+    pub fn add<I: Injectable>(&mut self) -> &mut Self {
+        self.state.add::<I>();
+        self
     }
 
-    /// Returns the current initialization data.
-    pub fn init_data(&self) -> &InitData {
-        &self.init_data
-    }
-
-    /// Enqueues an [`Injectable`] to be built and returns a slot pointing to the memory location of
-    /// its (future) instance.
-    pub(crate) fn enqueue<I: Injectable>(&mut self) -> Slot<I> {
-        *self.slots.entry::<SlotKey<I>>().or_insert_with(|| {
-            self.injectable_builders
-                .push(Box::new(InjectableBuilderImpl::<I>::default()));
-            Slot::uninit()
-        })
-    }
-
-    /// Registers a hook that is executed right after the [`Injector`] was constructed.
+    /// Binds `B` (e.g. a trait object) to the injectable `I`, so that `Inject<B>` and `Depend<B>`
+    /// reference `I`.
     ///
-    /// Note that there is no guarantee on the order in which the hooks are executed.
-    pub fn on_start(&mut self, on_start: impl OnStart) {
-        self.on_start.push(Box::new(on_start));
+    /// Fails if `B` is already bound to another injectable.
+    pub fn bind<B: ?Sized + Bindable<I>, I: Injectable>(
+        &mut self,
+    ) -> Result<&mut Self, BindingConflictError> {
+        self.state.bind::<B, I>()?;
+        Ok(self)
     }
 
-    /// See [`crate::InitInjector::build`]
-    pub(crate) async fn build(mut self) -> crate::Result<Injector> {
-        let mut injectables = InjectablesData::default();
-        while let Some(initializer) = self.injectable_builders.pop() {
-            initializer.initialize(&mut self, &mut injectables).await?;
-        }
-
-        let injector = Injector::new(Box::leak(Box::new(injectables)));
-
-        // concurrently run start hooks
-        self.on_start
-            .into_iter()
-            .map(|on_start| on_start.on_start(injector))
-            .collect::<FuturesUnordered<_>>()
-            .try_collect::<()>()
-            .await?;
-
-        Ok(injector)
+    /// Runs all build steps and returns the resulting [`Injector`].
+    pub async fn build(self) -> Result<Injector, Error> {
+        let state = self.state.declare()?;
+        let state = BuildState::<PrepareStep>::new(state);
+        let state = state.prepare().await?;
+        let state = BuildState::<AssembleStep>::new(state);
+        let injectables = state.assemble().await?;
+        Ok(Injector::new(injectables))
     }
 }
 
-impl Default for InjectorBuilder {
-    fn default() -> Self {
-        Self::new()
+#[derive(Default)]
+pub struct BuildState<Step> {
+    dependency_graph: DependencyGraph,
+    bindings: Bindings,
+    registry: Registry,
+    step: Step,
+}
+
+impl<Step> BuildState<Step> {
+    fn with_step<NewStep>(self, new_step: NewStep) -> (BuildState<NewStep>, Step) {
+        (
+            BuildState {
+                dependency_graph: self.dependency_graph,
+                bindings: self.bindings,
+                registry: self.registry,
+                step: new_step,
+            },
+            self.step,
+        )
     }
-}
 
-trait InjectableBuilder: Send + Sync {
-    fn initialize<'a>(
-        self: Box<Self>,
-        builder: &'a mut InjectorBuilder,
-        injectables_data: &'a mut InjectablesData,
-    ) -> BoxFuture<'a, crate::Result<()>>;
-}
-
-struct InjectableBuilderImpl<I>(PhantomData<I>);
-
-impl<I: Injectable> InjectableBuilder for InjectableBuilderImpl<I> {
-    fn initialize<'a>(
-        self: Box<Self>,
-        builder: &'a mut InjectorBuilder,
-        injectables_data: &'a mut InjectablesData,
-    ) -> BoxFuture<'a, crate::Result<()>> {
-        async move {
-            let slot = *builder
-                .slots
-                .get::<SlotKey<I>>()
-                .expect("slot should exist");
-            let data = builder
-                .init_data_mut()
-                .remove::<InjectableDataKey<I>>()
-                .flatten()
-                .ok_or_else(|| {
-                    Error::msg(format!(
-                        "injectable `{}` was never fully initialized",
-                        type_name::<I>()
-                    ))
-                })?;
-            slot.set(I::build(data, builder, Restricted::new()).await?);
-            assert!(
-                injectables_data
-                    .insert::<InjectableKey<I>>(slot.get().expect("slot should be set"))
-                    .is_none(),
-                "injectable entry already present"
-            );
-            Ok(())
-        }
-        .boxed()
-    }
-}
-
-impl<I> Default for InjectableBuilderImpl<I> {
-    fn default() -> Self {
-        Self(PhantomData)
+    fn map_step<NewStep>(
+        self,
+        map: impl FnOnce(Step, &mut BuildState<()>) -> NewStep,
+    ) -> BuildState<NewStep> {
+        let (mut state, step) = self.with_step(());
+        let step = map(step, &mut state);
+        state.with_step(step).0
     }
 }

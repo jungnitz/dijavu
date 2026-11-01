@@ -1,0 +1,5 @@
+error: `bind` is not supported for `InjectableField`
+ --> tests/ui/field_bind.rs:6:19
+  |
+6 | #[injectable(bind(dyn Service))]
+  |                   ^^^^^^^^^^^
