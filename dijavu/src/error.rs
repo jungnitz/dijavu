@@ -25,6 +25,13 @@ impl Error {
     pub fn kind(&self) -> &ErrorKind {
         &self.kind
     }
+
+    pub fn into_custom(self) -> Result<Box<dyn StdError + Send + Sync + 'static>, Self> {
+        match self.kind {
+            ErrorKind::Custom(custom) => Ok(custom),
+            _ => Err(self),
+        }
+    }
 }
 
 impl From<Infallible> for Error {
