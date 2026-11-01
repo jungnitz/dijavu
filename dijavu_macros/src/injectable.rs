@@ -274,9 +274,9 @@ impl<'a> Derive<'a> {
             }
         });
         let body = if self.is_tuple {
-            quote!((#(#fields,)* pub #context) #where_clause;)
+            quote!((#(#fields,)* #context) #where_clause;)
         } else {
-            quote!(#where_clause { #(#fields,)* pub ctx: #context })
+            quote!(#where_clause { #(#fields,)* ctx: #context })
         };
         quote!(
             #[doc = #doc]
