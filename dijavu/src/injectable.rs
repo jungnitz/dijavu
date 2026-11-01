@@ -21,7 +21,7 @@ pub trait Injectable: Visitable + Sized + Send + Sync + 'static {
     }
 
     /// Declares what this injectable references and provides.
-    fn declare(init: DeclareContext<'_, Self>) -> Result<Self::Declaration, Error>;
+    fn declare(ctx: DeclareContext<'_, Self>) -> Result<Self::Declaration, Error>;
 
     /// Prepares this injectable, after everything it depends on has been prepared.
     fn prepare(
@@ -37,7 +37,7 @@ pub trait Injectable: Visitable + Sized + Send + Sync + 'static {
 
     /// Builds this injectable.
     fn assemble(
-        init: Self::Preparation,
+        preparation: Self::Preparation,
         builder: AssembleContext<'_, Self>,
     ) -> impl Future<Output = Result<Self, Error>> + Send;
 }
