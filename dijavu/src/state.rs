@@ -4,38 +4,60 @@ use std::marker::PhantomData;
 
 use crate::{Injectable, InjectableField, PrepareContext};
 
-/// A build step, which determines what a state struct like `FooState<S>` holds.
-pub trait InjectableState<I: Injectable> {
+/// A build step, which determines what the state struct `FooState<S>` of the injectable `I` holds.
+pub trait InjectableState<I> {
     /// The type of the `ctx` field.
     type ContextField;
     /// What the state holds for a field of type `T`.
     type Field<T>: Sized
     where
-        T: InjectableField<I>;
+        T: InjectableField;
+}
+
+/// A build step, which determines what the state struct of a reusable field holds.
+pub trait InjectableFieldState {
+    /// What the state holds for a field of type `T`.
+    type Field<T>: Sized
+    where
+        T: InjectableField;
 }
 
 /// The state after the declare step, holding [`InjectableField::Declaration`] per field.
 pub struct Declare(());
 
-impl<I: Injectable> InjectableState<I> for Declare {
+impl<I> InjectableState<I> for Declare {
     type ContextField = ();
 
     type Field<T>
         = T::Declaration
     where
-        T: InjectableField<I>;
+        T: InjectableField;
+}
+
+impl InjectableFieldState for Declare {
+    type Field<T>
+        = T::Declaration
+    where
+        T: InjectableField;
 }
 
 /// The state after the prepare step, holding [`InjectableField::Preparation`] per field.
 pub struct Prepare(());
 
-impl<I: Injectable> InjectableState<I> for Prepare {
+impl<I> InjectableState<I> for Prepare {
     type ContextField = ();
 
     type Field<T>
         = T::Preparation
     where
-        T: InjectableField<I>;
+        T: InjectableField;
+}
+
+impl InjectableFieldState for Prepare {
+    type Field<T>
+        = T::Preparation
+    where
+        T: InjectableField;
 }
 
 /// Like [`Prepare`], with a [`PrepareContext`] as `ctx`, for access by other injectables.
@@ -47,5 +69,5 @@ impl<'ctx, I: Injectable> InjectableState<I> for Preparing<'ctx> {
     type Field<T>
         = T::Preparation
     where
-        T: InjectableField<I>;
+        T: InjectableField;
 }

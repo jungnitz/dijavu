@@ -1,10 +1,12 @@
-use crate::{AssembleContext, DeclareContext, Injectable, build::DependencyType, refs::Ref};
+use crate::{
+    FieldAssembleContext, FieldDeclareContext, Injectable, build::DependencyType, refs::Ref,
+};
 
 /// Something that can be referenced via [`Inject`](crate::fields::Inject) or
 /// [`Depend`](crate::fields::Depend).
 ///
 /// This is typically either an [`Injectable`] or an unsized type (e.g. a trait object) that is
-/// bound to an injectable via [`DeclareContext::bind`] or
+/// bound to an injectable via [`FieldDeclareContext::bind`] or
 /// [`Builder::bind`](crate::Builder::bind). Implement this for trait objects via
 /// [`bindable!`](crate::bindable).
 ///
@@ -14,26 +16,26 @@ use crate::{AssembleContext, DeclareContext, Injectable, build::DependencyType, 
 #[allow(private_interfaces)]
 pub trait Target: Send + Sync + 'static {
     #[doc(hidden)]
-    fn declare<I: Injectable>(ctx: &mut DeclareContext<'_, I>, typ: DependencyType) {
+    fn declare(ctx: &mut FieldDeclareContext<'_>, typ: DependencyType) {
         ctx.add_bound_dependency::<Self>(typ);
     }
 
     #[doc(hidden)]
-    fn get_ref<I: Injectable>(ctx: &mut AssembleContext<'_, I>) -> Ref<Self> {
+    fn get_ref(ctx: &mut FieldAssembleContext<'_>) -> Ref<Self> {
         ctx.get_bound_ref::<Self>()
     }
 }
 
 #[allow(private_interfaces)]
 impl<T: Injectable> Target for T {
-    fn declare<I: Injectable>(ctx: &mut DeclareContext<'_, I>, typ: DependencyType) {
+    fn declare(ctx: &mut FieldDeclareContext<'_>, typ: DependencyType) {
         match typ {
             DependencyType::Hard => ctx.add_hard_dependency::<T>(),
             DependencyType::Soft => ctx.add::<T>(),
         }
     }
 
-    fn get_ref<I: Injectable>(ctx: &mut AssembleContext<'_, I>) -> Ref<Self> {
+    fn get_ref(ctx: &mut FieldAssembleContext<'_>) -> Ref<Self> {
         ctx.get_ref::<T>()
     }
 }

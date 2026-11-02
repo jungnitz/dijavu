@@ -2,7 +2,7 @@ use std::any::{Any, TypeId, type_name};
 
 use rustc_hash::FxHashMap;
 
-use crate::{Injectable, error::MissingInputError, fields::Input};
+use crate::{build::dependency_graph::Node, error::MissingInputError, fields::Input};
 
 /// The values set via [`Builder::set_input`](crate::Builder::set_input), one per type.
 #[derive(Default)]
@@ -17,12 +17,16 @@ impl Inputs {
             .insert(TypeId::of::<T>(), Box::new(Input::new(value)));
     }
 
-    /// Returns the input of type `T` for the injectable `I`, which is only used for the error.
-    pub(super) fn get<I: Injectable, T: Send + Sync + 'static>(
+    /// Returns the input of type `T` for the given injectable, which is only used for the error.
+    pub(super) fn get<T: Send + Sync + 'static>(
         &self,
+        injectable: &Node,
     ) -> Result<Input<T>, MissingInputError> {
         let Some(input) = self.entries.get(&TypeId::of::<T>()) else {
-            return Err(MissingInputError::new(type_name::<T>(), I::name()));
+            return Err(MissingInputError::new(
+                type_name::<T>(),
+                injectable.name().clone(),
+            ));
         };
         Ok(input.downcast_ref::<Input<T>>().unwrap().clone())
     }

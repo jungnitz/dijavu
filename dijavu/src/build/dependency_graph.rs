@@ -55,7 +55,10 @@ impl DependencyGraph {
     }
 
     pub(super) fn get_index<I: Injectable>(&self) -> NodeIndex {
-        self.node_indices[&TypeId::of::<I>()]
+        let Some(index) = self.node_indices.get(&TypeId::of::<I>()) else {
+            panic!("injectable `{}` should be part of this build", I::name())
+        };
+        *index
     }
 
     pub(super) fn get(&self, index: NodeIndex) -> &Node {

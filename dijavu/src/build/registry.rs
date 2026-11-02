@@ -8,12 +8,12 @@ use rustc_hash::FxHashMap;
 
 use crate::Injectable;
 
-/// A type whose values can be registered via [`DeclareContext::register`] and read via
-/// [`PrepareContext::registered`] and [`AssembleContext::registered`].
+/// A type whose values can be registered via [`FieldDeclareContext::register`] and read via
+/// [`FieldPrepareContext::registered`] and [`FieldAssembleContext::registered`].
 ///
-/// [`DeclareContext::register`]: crate::DeclareContext::register
-/// [`PrepareContext::registered`]: crate::PrepareContext::registered
-/// [`AssembleContext::registered`]: crate::AssembleContext::registered
+/// [`FieldDeclareContext::register`]: crate::FieldDeclareContext::register
+/// [`FieldPrepareContext::registered`]: crate::FieldPrepareContext::registered
+/// [`FieldAssembleContext::registered`]: crate::FieldAssembleContext::registered
 pub trait Registered: Send + Sync + 'static {
     /// The injectable that consumes values of this type, which is added to the build whenever one
     /// is registered.

@@ -19,7 +19,7 @@ impl WithoutSupertraits for () {}
 impl Generic<u32> for () {}
 
 fn assert_bindable<B: ?Sized + Bindable<()>>() {}
-fn assert_field<F: InjectableField<()>>() {}
+fn assert_field<F: InjectableField>() {}
 fn assert_target<T: ?Sized + Target>() {}
 
 #[test]

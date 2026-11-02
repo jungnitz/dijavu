@@ -1,0 +1,31 @@
+error[E0308]: mismatched types
+  --> tests/ui/injectable_restricted_step.rs:10:41
+   |
+10 |     let _ = Other::prepare(declaration, ctx);
+   |             --------------              ^^^ expected `PrepareContext<'_, Other>`, found `FieldPrepareContext<'_>`
+   |             |
+   |             arguments to this function are incorrect
+   |
+   = note: expected struct `PrepareContext<'_, Other>`
+              found struct `FieldPrepareContext<'_>`
+note: associated function defined here
+  --> src/injectable.rs
+   |
+   |     fn prepare(
+   |        ^^^^^^^
+
+error[E0308]: mismatched types
+  --> tests/ui/injectable_restricted_step.rs:17:41
+   |
+17 |     let _ = Other::prepare(declaration, ctx);
+   |             --------------              ^^^ expected `PrepareContext<'_, Other>`, found `PrepareContext<'_, Mine>`
+   |             |
+   |             arguments to this function are incorrect
+   |
+   = note: expected struct `PrepareContext<'_, Other>`
+              found struct `PrepareContext<'_, Mine>`
+note: associated function defined here
+  --> src/injectable.rs
+   |
+   |     fn prepare(
+   |        ^^^^^^^

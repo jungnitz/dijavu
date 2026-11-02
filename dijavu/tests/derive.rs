@@ -1,8 +1,8 @@
 //! The derive macros must work outside of `dijavu`.
 
 use dijavu::{
-    AssembleContext, Builder, DeclareContext, Error, Injectable, InjectableField, Injector,
-    PrepareContext, Target, Visitable,
+    AssembleContext, Builder, DeclareContext, Error, FieldAssembleContext, FieldDeclareContext,
+    Injectable, InjectableField, Injector, PrepareContext, Target, Visitable,
     fields::{Depend, Inject, Value},
     state::{Declare, Prepare, Preparing},
 };
@@ -286,17 +286,17 @@ pub struct Group {
 }
 
 impl Group {
-    fn on_declare<I: Injectable>(
-        state: &mut GroupState<I, Declare>,
-        _ctx: DeclareContext<'_, I>,
+    fn on_declare(
+        state: &mut GroupState<Declare>,
+        _ctx: FieldDeclareContext<'_>,
     ) -> Result<(), Error> {
         state.declared = 1;
         Ok(())
     }
 
-    async fn on_assemble<I: Injectable>(
-        state: &mut GroupState<I, Prepare>,
-        _ctx: AssembleContext<'_, I>,
+    async fn on_assemble(
+        state: &mut GroupState<Prepare>,
+        _ctx: FieldAssembleContext<'_>,
     ) -> Result<(), Error> {
         state.declared += 1;
         Ok(())
@@ -309,11 +309,54 @@ pub struct Wrapper<T>(pub T);
 #[derive(InjectableField)]
 pub struct UnitField;
 
+/// Fields without any fields have no generated state, so this name is free.
+pub struct UnitFieldState;
+
+#[derive(InjectableField)]
+pub struct EmptyField {}
+
+#[derive(InjectableField)]
+pub struct EmptyTupleField();
+
+static UNIT_HOOK_RAN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[derive(InjectableField)]
+#[injectable(declare = Self::on_declare)]
+pub struct UnitWithHook;
+
+impl UnitWithHook {
+    fn on_declare(_state: &mut (), _ctx: FieldDeclareContext<'_>) -> Result<(), Error> {
+        UNIT_HOOK_RAN.store(true, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+/// The state of a field has no context, so unlike for injectables, the name `ctx` is free.
+#[derive(InjectableField)]
+#[injectable(declare = Self::on_declare)]
+pub struct NamedCtx {
+    ctx: Value<u32>,
+}
+
+impl NamedCtx {
+    fn on_declare(
+        state: &mut NamedCtxState<Declare>,
+        _ctx: FieldDeclareContext<'_>,
+    ) -> Result<(), Error> {
+        state.ctx = 1;
+        Ok(())
+    }
+}
+
 #[derive(Injectable)]
 struct UsesFields {
     group: Group,
     wrapper: Wrapper<Wrapper<Inject<Config>>>,
     unit: UnitField,
+    empty: EmptyField,
+    empty_tuple: EmptyTupleField,
+    unit_with_hook: UnitWithHook,
+    named_ctx: NamedCtx,
 }
 
 #[test]
@@ -326,6 +369,19 @@ fn injectable_field() {
         injector.get::<Config>()
     ));
     assert!(std::ptr::eq(&*fields.wrapper.0.0, injector.get::<Config>()));
+    assert!(UNIT_HOOK_RAN.load(std::sync::atomic::Ordering::Relaxed));
+    assert_eq!(*fields.named_ctx.ctx, 1);
+}
+
+#[derive(Injectable)]
+struct GenericField<T: InjectableField> {
+    field: T,
+}
+
+#[test]
+fn field_as_a_generic_parameter() {
+    let injector = build::<GenericField<Value<u32>>>();
+    assert_eq!(*injector.get::<GenericField<Value<u32>>>().field, 0);
 }
 
 // The following only need to compile.
@@ -339,7 +395,7 @@ fn _derived_types_are_visitable() {
     _assert_visitable::<Wrapper<Group>>();
 }
 
-fn _assert_field<F: InjectableField<Unit>>() {}
+fn _assert_field<F: InjectableField>() {}
 
 fn _fields_work_for_any_injectable() {
     _assert_field::<Group>();

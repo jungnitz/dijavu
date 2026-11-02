@@ -1,0 +1,10 @@
+error[E0624]: associated function `new` is private
+ --> tests/ui/context_private.rs:4:35
+  |
+4 |     let _ = PrepareContext::<()>::new(field);
+  |                                   ^^^ private associated function
+  |
+ ::: src/build/mod.rs
+  |
+  |             pub(super) fn new(field: $field<'ctx>) -> Self {
+  |             ---------------------------------------------- private associated function defined here

@@ -1,14 +1,15 @@
 use std::{marker::PhantomData, ops::Deref};
 
 use crate::{
-    AssembleContext, DeclareContext, Error, Injectable, InjectableField, PrepareContext,
-    RefVisitor, Target, Visitable, build::DependencyType, refs::Ref,
+    Error, FieldAssembleContext, FieldDeclareContext, FieldPrepareContext, InjectableField,
+    RefVisitor, Target, Visitable, build::DependencyType, fields::DependToken, refs::Ref,
 };
 
-/// A token that indicates that an [`Injectable`] will be built as a result of the current
+/// A token that indicates that an [`Injectable`](crate::Injectable) will be built as a result of the current
 /// initialization process.
 ///
-/// You can obtain one of these tokens by adding a [`Inject`] field for `T` to your [`Injectable`].
+/// You can obtain one of these tokens by adding a [`Inject`] field for `T` to your [`Injectable`](crate::Injectable),
+/// or for the injectable itself via its context, like [`PrepareContext::inject_token`](crate::PrepareContext::inject_token).
 // Implementation Note: this token makes absolutely no **guarantees** about anything. It's just a
 // hint to the user on what he needs to do (add an `Inject` field) to achieve certain things. Do not
 // rely on it for any safety reasoning etc.
@@ -37,25 +38,25 @@ impl<T: ?Sized + Target> Copy for InjectToken<T> {}
 /// `T` can also be a trait object that is bound to an injectable (see [`Target`]).
 pub struct Inject<T: ?Sized + Target>(Ref<T>);
 
-impl<I: Injectable, T: ?Sized + Target> InjectableField<I> for Inject<T> {
+impl<T: ?Sized + Target> InjectableField for Inject<T> {
     type Declaration = InjectToken<T>;
     type Preparation = InjectToken<T>;
 
-    fn declare(mut init: DeclareContext<'_, I>) -> Result<Self::Declaration, Error> {
+    fn declare(mut init: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         T::declare(&mut init, DependencyType::Soft);
         Ok(InjectToken::new())
     }
 
     async fn prepare(
         declaration: Self::Declaration,
-        _init: PrepareContext<'_, I>,
+        _init: FieldPrepareContext<'_>,
     ) -> Result<Self::Preparation, Error> {
         Ok(declaration)
     }
 
     async fn assemble(
         _init: Self::Preparation,
-        mut builder: AssembleContext<'_, I>,
+        mut builder: FieldAssembleContext<'_>,
     ) -> Result<Self, Error> {
         Ok(Inject(T::get_ref(&mut builder)))
     }
@@ -73,5 +74,11 @@ impl<T: ?Sized + Target> Deref for Inject<T> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl<T: ?Sized + Target> From<DependToken<T>> for InjectToken<T> {
+    fn from(_value: DependToken<T>) -> Self {
+        InjectToken::new()
     }
 }

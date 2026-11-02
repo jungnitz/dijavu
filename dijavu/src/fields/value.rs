@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use crate::{
-    AssembleContext, DeclareContext, Error, Injectable, InjectableField, PrepareContext,
+    Error, FieldAssembleContext, FieldDeclareContext, FieldPrepareContext, InjectableField,
     RefVisitor, Visitable,
 };
 
@@ -24,24 +24,24 @@ impl<T> Value<T> {
     }
 }
 
-impl<I: Injectable, T: Default + Send + Sync + 'static> InjectableField<I> for Value<T> {
+impl<T: Default + Send + Sync + 'static> InjectableField for Value<T> {
     type Declaration = T;
     type Preparation = T;
 
-    fn declare(_ctx: DeclareContext<'_, I>) -> Result<Self::Declaration, Error> {
+    fn declare(_ctx: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         Ok(T::default())
     }
 
     async fn prepare(
         declaration: Self::Declaration,
-        _ctx: PrepareContext<'_, I>,
+        _ctx: FieldPrepareContext<'_>,
     ) -> Result<Self::Preparation, Error> {
         Ok(declaration)
     }
 
     async fn assemble(
         preparation: Self::Preparation,
-        _ctx: AssembleContext<'_, I>,
+        _ctx: FieldAssembleContext<'_>,
     ) -> Result<Self, Error> {
         Ok(Self(preparation))
     }

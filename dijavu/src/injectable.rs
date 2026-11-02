@@ -10,7 +10,8 @@ pub trait Injectable: Visitable + Sized + Send + Sync + 'static {
     type Declaration: Send;
     /// The data of this injectable after the prepare step.
     type Preparation: Send;
-    /// The state that other injectables access via [`PrepareContext::get`].
+    /// The state that other injectables access via
+    /// [`FieldPrepareContext::get`](crate::FieldPrepareContext::get).
     type Preparing<'ctx>: Preparing<'ctx, Self>;
 
     /// The name of this injectable, by default the name of the type.
@@ -29,7 +30,8 @@ pub trait Injectable: Visitable + Sized + Send + Sync + 'static {
         ctx: PrepareContext<'_, Self>,
     ) -> impl Future<Output = Result<Self::Preparation, Error>> + Send;
 
-    /// Creates the state that other injectables access via [`PrepareContext::get`].
+    /// Creates the state that other injectables access via
+    /// [`FieldPrepareContext::get`](crate::FieldPrepareContext::get).
     fn make_preparing<'ctx>(
         preparation: Self::Preparation,
         ctx: PrepareContext<'ctx, Self>,
@@ -38,7 +40,7 @@ pub trait Injectable: Visitable + Sized + Send + Sync + 'static {
     /// Builds this injectable.
     fn assemble(
         preparation: Self::Preparation,
-        builder: AssembleContext<'_, Self>,
+        ctx: AssembleContext<'_, Self>,
     ) -> impl Future<Output = Result<Self, Error>> + Send;
 }
 
@@ -51,9 +53,9 @@ pub trait Preparing<'ctx, I: Injectable>: Send {
 impl Injectable for () {
     type Declaration = ();
     type Preparation = ();
-    type Preparing<'ctx> = PrepareContext<'ctx, Self>;
+    type Preparing<'ctx> = PrepareContext<'ctx, ()>;
 
-    fn declare(_init: DeclareContext<'_, Self>) -> Result<Self::Declaration, Error> {
+    fn declare(_ctx: DeclareContext<'_, Self>) -> Result<Self::Declaration, Error> {
         Ok(())
     }
 
@@ -72,8 +74,8 @@ impl Injectable for () {
     }
 
     async fn assemble(
-        _init: Self::Preparation,
-        _builder: AssembleContext<'_, Self>,
+        _preparation: Self::Preparation,
+        _ctx: AssembleContext<'_, Self>,
     ) -> Result<Self, Error> {
         Ok(())
     }

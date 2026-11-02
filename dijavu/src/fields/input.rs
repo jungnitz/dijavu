@@ -1,7 +1,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use crate::{
-    AssembleContext, DeclareContext, Error, Injectable, InjectableField, PrepareContext,
+    Error, FieldAssembleContext, FieldDeclareContext, FieldPrepareContext, InjectableField,
     RefVisitor, Visitable,
 };
 
@@ -58,24 +58,24 @@ impl<T> Clone for Input<T> {
     }
 }
 
-impl<I: Injectable, T: Send + Sync + 'static> InjectableField<I> for Input<T> {
+impl<T: Send + Sync + 'static> InjectableField for Input<T> {
     type Declaration = Input<T>;
     type Preparation = Input<T>;
 
-    fn declare(ctx: DeclareContext<'_, I>) -> Result<Self::Declaration, Error> {
+    fn declare(ctx: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         Ok(ctx.input()?)
     }
 
     async fn prepare(
         declaration: Self::Declaration,
-        _ctx: PrepareContext<'_, I>,
+        _ctx: FieldPrepareContext<'_>,
     ) -> Result<Self::Preparation, Error> {
         Ok(declaration)
     }
 
     async fn assemble(
         preparation: Self::Preparation,
-        _ctx: AssembleContext<'_, I>,
+        _ctx: FieldAssembleContext<'_>,
     ) -> Result<Self, Error> {
         Ok(preparation)
     }

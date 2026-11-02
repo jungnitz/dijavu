@@ -1,10 +1,11 @@
-use std::{any::type_name, marker::PhantomData};
+use std::any::type_name;
 
 use crate::{
     Error, Injectable, Target,
     build::{
         BuildState, Registered, RegisteredValues,
         dependency_graph::{DependencyType, NodeIndex},
+        injectable_context,
         prepare::Preparations,
     },
     error::MissingInputError,
@@ -13,29 +14,27 @@ use crate::{
     refs::Ref,
 };
 
-/// Gives access to the build during the assemble step.
-pub struct AssembleContext<'a, I: Injectable> {
+injectable_context!(AssembleContext, FieldAssembleContext, "assemble");
+
+/// Gives fields access to the build during the assemble step.
+pub struct FieldAssembleContext<'a> {
     state: &'a mut BuildState<AssembleStep>,
     node_index: NodeIndex,
-    _i: PhantomData<I>,
 }
 
-impl<'ctx, I: Injectable> AssembleContext<'ctx, I> {
+impl<'ctx> FieldAssembleContext<'ctx> {
     /// Returns an owned context borrowing from this one, e.g. to pass it to multiple fields.
-    pub fn as_owned(&mut self) -> AssembleContext<'_, I> {
-        AssembleContext {
+    pub fn reborrow(&mut self) -> FieldAssembleContext<'_> {
+        FieldAssembleContext {
             state: self.state,
             node_index: self.node_index,
-            _i: PhantomData,
         }
     }
 
-    /// Returns the values of type `R` that were registered via [`DeclareContext::register`], in
-    /// the order of their registration, which is empty if there are none.
+    /// Returns the values of type `R` that were registered via [`FieldDeclareContext::register`],
+    /// in the order of their registration.
     ///
-    /// The returned list does not borrow from this context and can be kept in the injectable.
-    ///
-    /// [`DeclareContext::register`]: crate::DeclareContext::register
+    /// [`FieldDeclareContext::register`]: crate::FieldDeclareContext::register
     pub fn registered<R: Registered>(&self) -> RegisteredValues<R> {
         self.state.registry.get()
     }
@@ -44,7 +43,9 @@ impl<'ctx, I: Injectable> AssembleContext<'ctx, I> {
     ///
     /// Fails if the input has not been set.
     pub fn input<T: Send + Sync + 'static>(&self) -> Result<Input<T>, MissingInputError> {
-        self.state.inputs.get::<I, T>()
+        self.state
+            .inputs
+            .get(self.state.dependency_graph.get(self.node_index))
     }
 
     /// Returns a reference to `To`, which will be enabled once the build has finished.
@@ -115,11 +116,10 @@ impl BuildState<AssembleStep> {
         let preparation = self.step.preparations.remove::<I>(index);
         let injectable = I::assemble(
             preparation,
-            AssembleContext {
+            AssembleContext::new(FieldAssembleContext {
                 state: self,
                 node_index: index,
-                _i: PhantomData,
-            },
+            }),
         )
         .await?;
         self.step.injectables.set::<I>(injectable);

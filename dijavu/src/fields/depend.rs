@@ -1,14 +1,14 @@
 use std::{marker::PhantomData, ops::Deref};
 
 use crate::{
-    AssembleContext, DeclareContext, Error, Injectable, InjectableField, PrepareContext,
+    Error, FieldAssembleContext, FieldDeclareContext, FieldPrepareContext, InjectableField,
     RefVisitor, Target, Visitable, build::DependencyType, refs::Ref,
 };
 
-/// Allows accessing the preparation of `T` via [`PrepareContext::get`].
+/// Allows accessing the preparation of `T` via [`FieldPrepareContext::get`].
 ///
 /// You can obtain one of these tokens by adding a [`Depend`] field for `T` to your
-/// [`Injectable`].
+/// [`Injectable`](crate::Injectable).
 pub struct DependToken<T: ?Sized>(PhantomData<T>);
 
 /// A reference to another injectable that is prepared before the injectable containing it.
@@ -17,28 +17,28 @@ pub struct DependToken<T: ?Sized>(PhantomData<T>);
 ///
 /// `T` can also be a trait object that is bound to an injectable (see [`Target`]). In this case,
 /// the bound injectable is still prepared first, but its preparation cannot be accessed via
-/// [`PrepareContext::get`].
+/// [`FieldPrepareContext::get`].
 pub struct Depend<T: ?Sized + Target>(Ref<T>);
 
-impl<I: Injectable, T: ?Sized + Target> InjectableField<I> for Depend<T> {
+impl<T: ?Sized + Target> InjectableField for Depend<T> {
     type Declaration = DependToken<T>;
     type Preparation = DependToken<T>;
 
-    fn declare(mut init: DeclareContext<'_, I>) -> Result<Self::Declaration, Error> {
+    fn declare(mut init: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         T::declare(&mut init, DependencyType::Hard);
         Ok(DependToken(PhantomData))
     }
 
     async fn prepare(
         declaration: Self::Declaration,
-        _init: PrepareContext<'_, I>,
+        _init: FieldPrepareContext<'_>,
     ) -> Result<Self::Preparation, Error> {
         Ok(declaration)
     }
 
     async fn assemble(
         _init: Self::Preparation,
-        mut builder: AssembleContext<'_, I>,
+        mut builder: FieldAssembleContext<'_>,
     ) -> Result<Self, Error> {
         Ok(Depend(T::get_ref(&mut builder)))
     }

@@ -1,12 +1,9 @@
-use std::{
-    any::{TypeId, type_name},
-    marker::PhantomData,
-};
+use std::any::{TypeId, type_name};
 
 use crate::{
     Bindable, Error, Injectable, Target,
     build::{
-        BuildState, Registered, dependency_graph::NodeIndex,
+        BuildState, Registered, dependency_graph::NodeIndex, injectable_context,
         value_per_injectable::ValuePerInjectable,
     },
     error::{BindingConflictError, MissingInputError, UnboundError},
@@ -15,23 +12,20 @@ use crate::{
 
 use super::dependency_graph::DependencyType;
 
-/// Gives access to the build during the declare step.
-pub struct DeclareContext<'a, I: Injectable> {
+injectable_context!(DeclareContext, FieldDeclareContext, "declare");
+
+/// Gives fields access to the build during the declare step.
+pub struct FieldDeclareContext<'a> {
     state: &'a mut BuildState<DeclareStep>,
     node_index: NodeIndex,
-    _i: PhantomData<I>,
 }
 
-impl<'a, I> DeclareContext<'a, I>
-where
-    I: Injectable,
-{
+impl<'a> FieldDeclareContext<'a> {
     /// Returns an owned context borrowing from this one, e.g. to pass it to multiple fields.
-    pub fn as_owned(&mut self) -> DeclareContext<'_, I> {
-        DeclareContext {
+    pub fn reborrow(&mut self) -> FieldDeclareContext<'_> {
+        FieldDeclareContext {
             state: self.state,
             node_index: self.node_index,
-            _i: PhantomData,
         }
     }
 
@@ -66,8 +60,8 @@ where
         self.state.bind::<B, Impl>()
     }
 
-    /// Registers a value that can be read via [`PrepareContext::registered`] and
-    /// [`AssembleContext::registered`], by any injectable.
+    /// Registers a value that can be read via [`FieldPrepareContext::registered`] and
+    /// [`FieldAssembleContext::registered`], by any injectable.
     ///
     /// Values are grouped by their type `R`, which has to implement [`Registered`]. To register
     /// different types implementing a trait, use a trait object as `R`, for example
@@ -79,8 +73,8 @@ where
     /// injectable registering a value still has to be part of the build, so it must be referenced
     /// or added to the [`Builder`](crate::Builder).
     ///
-    /// [`PrepareContext::registered`]: crate::PrepareContext::registered
-    /// [`AssembleContext::registered`]: crate::AssembleContext::registered
+    /// [`FieldPrepareContext::registered`]: crate::FieldPrepareContext::registered
+    /// [`FieldAssembleContext::registered`]: crate::FieldAssembleContext::registered
     ///
     /// # Example
     ///
@@ -148,7 +142,9 @@ where
     ///
     /// Fails if the input has not been set.
     pub fn input<T: Send + Sync + 'static>(&self) -> Result<Input<T>, MissingInputError> {
-        self.state.inputs.get::<I, T>()
+        self.state
+            .inputs
+            .get(self.state.dependency_graph.get(self.node_index))
     }
 }
 
@@ -226,11 +222,10 @@ impl BuildState<DeclareStep> {
     }
 
     fn declare_one<I: Injectable>(&mut self, node_index: NodeIndex) -> Result<(), Error> {
-        let declaration = I::declare(DeclareContext::<I> {
+        let declaration = I::declare(DeclareContext::new(FieldDeclareContext {
             state: self,
             node_index,
-            _i: PhantomData,
-        })?;
+        }))?;
         self.step.declarations.insert::<I>(node_index, declaration);
         Ok(())
     }

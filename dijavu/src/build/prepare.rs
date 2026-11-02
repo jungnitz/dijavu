@@ -1,41 +1,37 @@
-use std::{
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 
 use crate::{
     Error, Injectable,
     build::{
         BuildState, Registered, RegisteredValues, declare::Declarations,
-        dependency_graph::NodeIndex, value_per_injectable::ValuePerInjectable,
+        dependency_graph::NodeIndex, injectable_context, value_per_injectable::ValuePerInjectable,
     },
     error::MissingInputError,
     fields::{DependToken, Input},
     injectable::Preparing,
 };
 
-/// Gives access to the build during the prepare step.
-pub struct PrepareContext<'ctx, I: Injectable> {
+injectable_context!(PrepareContext, FieldPrepareContext, "prepare");
+
+/// Gives fields access to the build during the prepare step.
+pub struct FieldPrepareContext<'ctx> {
     state: &'ctx mut BuildState<PrepareStep>,
-    _i: PhantomData<I>,
+    node_index: NodeIndex,
 }
 
-impl<'ctx, I: Injectable> PrepareContext<'ctx, I> {
+impl<'ctx> FieldPrepareContext<'ctx> {
     /// Returns an owned context borrowing from this one, e.g. to pass it to multiple fields.
-    pub fn as_owned(&mut self) -> PrepareContext<'_, I> {
-        PrepareContext {
+    pub fn reborrow(&mut self) -> FieldPrepareContext<'_> {
+        FieldPrepareContext {
             state: self.state,
-            _i: PhantomData,
+            node_index: self.node_index,
         }
     }
 
-    /// Returns the values of type `R` that were registered via [`DeclareContext::register`], in
-    /// the order of their registration, which is empty if there are none.
+    /// Returns the values of type `R` that were registered via [`FieldDeclareContext::register`],
+    /// in the order of their registration.
     ///
-    /// All values are available regardless of the dependencies between injectables. The returned
-    /// list does not borrow from this context and can be kept in the state of the injectable.
-    ///
-    /// [`DeclareContext::register`]: crate::DeclareContext::register
+    /// [`FieldDeclareContext::register`]: crate::FieldDeclareContext::register
     pub fn registered<R: Registered>(&self) -> RegisteredValues<R> {
         self.state.registry.get()
     }
@@ -44,7 +40,9 @@ impl<'ctx, I: Injectable> PrepareContext<'ctx, I> {
     ///
     /// Fails if the input has not been set.
     pub fn input<T: Send + Sync + 'static>(&self) -> Result<Input<T>, MissingInputError> {
-        self.state.inputs.get::<I, T>()
+        self.state
+            .inputs
+            .get(self.state.dependency_graph.get(self.node_index))
     }
 
     /// Returns the [`Preparing`] state of `Other`, which allows configuring it.
@@ -59,10 +57,10 @@ impl<'ctx, I: Injectable> PrepareContext<'ctx, I> {
         let preparation = self.state.step.preparations.remove::<Other>(node_index);
         let preparing = Other::make_preparing(
             preparation,
-            PrepareContext {
+            PrepareContext::new(FieldPrepareContext {
                 state: self.state,
-                _i: PhantomData,
-            },
+                node_index,
+            }),
         );
         PreparingHandle {
             preparing: Some(preparing),
@@ -71,7 +69,7 @@ impl<'ctx, I: Injectable> PrepareContext<'ctx, I> {
     }
 }
 
-/// The [`Preparing`] state of an injectable, returned by [`PrepareContext::get`].
+/// The [`Preparing`] state of an injectable, returned by [`FieldPrepareContext::get`].
 ///
 /// Dropping this stores the changes back into the build.
 pub struct PreparingHandle<'ctx, I: Injectable> {
@@ -82,7 +80,8 @@ pub struct PreparingHandle<'ctx, I: Injectable> {
 impl<'ctx, I: Injectable> Drop for PreparingHandle<'ctx, I> {
     fn drop(&mut self) {
         let (ctx, preparation) = self.preparing.take().unwrap().into_parts();
-        ctx.state
+        ctx.field
+            .state
             .step
             .preparations
             .insert::<I>(self.node_index, preparation);
@@ -137,10 +136,10 @@ impl BuildState<PrepareStep> {
         let declaration = self.step.declarations.remove::<I>(index);
         let preparation = I::prepare(
             declaration,
-            PrepareContext::<I> {
+            PrepareContext::new(FieldPrepareContext {
                 state: self,
-                _i: PhantomData,
-            },
+                node_index: index,
+            }),
         )
         .await?;
         self.step.preparations.insert::<I>(index, preparation);

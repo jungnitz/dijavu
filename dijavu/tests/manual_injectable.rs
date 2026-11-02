@@ -1,8 +1,8 @@
 //! `Injectable` and `InjectableField` must be implementable outside of `dijavu`.
 
 use dijavu::{
-    AssembleContext, Builder, DeclareContext, Error, Injectable, InjectableField, PrepareContext,
-    Preparing, Visitable,
+    AssembleContext, Builder, DeclareContext, Error, FieldAssembleContext, FieldDeclareContext,
+    FieldPrepareContext, Injectable, InjectableField, PrepareContext, Preparing, Visitable,
     fields::{Depend, Inject},
 };
 use futures::executor::block_on;
@@ -17,8 +17,8 @@ type This = Inject<Multiple>;
 type Other = Depend<()>;
 
 struct MultiplePreparation {
-    this: <This as InjectableField<Multiple>>::Preparation,
-    other: <Other as InjectableField<Multiple>>::Preparation,
+    this: <This as InjectableField>::Preparation,
+    other: <Other as InjectableField>::Preparation,
 }
 
 struct MultiplePreparing<'ctx> {
@@ -34,16 +34,16 @@ impl<'ctx> Preparing<'ctx, Multiple> for MultiplePreparing<'ctx> {
 
 impl Injectable for Multiple {
     type Declaration = (
-        <This as InjectableField<Self>>::Declaration,
-        <Other as InjectableField<Self>>::Declaration,
+        <This as InjectableField>::Declaration,
+        <Other as InjectableField>::Declaration,
     );
     type Preparation = MultiplePreparation;
     type Preparing<'ctx> = MultiplePreparing<'ctx>;
 
     fn declare(mut ctx: DeclareContext<'_, Self>) -> Result<Self::Declaration, Error> {
         Ok((
-            <This as InjectableField<Self>>::declare(ctx.as_owned())?,
-            <Other as InjectableField<Self>>::declare(ctx.as_owned())?,
+            <This as InjectableField>::declare(ctx.field())?,
+            <Other as InjectableField>::declare(ctx.field())?,
         ))
     }
 
@@ -52,8 +52,8 @@ impl Injectable for Multiple {
         mut ctx: PrepareContext<'_, Self>,
     ) -> Result<Self::Preparation, Error> {
         Ok(MultiplePreparation {
-            this: <This as InjectableField<Self>>::prepare(this, ctx.as_owned()).await?,
-            other: <Other as InjectableField<Self>>::prepare(other, ctx.as_owned()).await?,
+            this: <This as InjectableField>::prepare(this, ctx.field()).await?,
+            other: <Other as InjectableField>::prepare(other, ctx.field()).await?,
         })
     }
 
@@ -69,10 +69,8 @@ impl Injectable for Multiple {
         mut ctx: AssembleContext<'_, Self>,
     ) -> Result<Self, Error> {
         Ok(Self {
-            this: <This as InjectableField<Self>>::assemble(preparation.this, ctx.as_owned())
-                .await?,
-            other: <Other as InjectableField<Self>>::assemble(preparation.other, ctx.as_owned())
-                .await?,
+            this: <This as InjectableField>::assemble(preparation.this, ctx.field()).await?,
+            other: <Other as InjectableField>::assemble(preparation.other, ctx.field()).await?,
         })
     }
 }
@@ -91,24 +89,24 @@ fn multiple_fields_outside_of_crate() {
 #[derive(Visitable)]
 struct Steps(#[visitable(skip)] u32);
 
-impl<I: Injectable> InjectableField<I> for Steps {
+impl InjectableField for Steps {
     type Declaration = u32;
     type Preparation = u32;
 
-    fn declare(_ctx: DeclareContext<'_, I>) -> Result<Self::Declaration, Error> {
+    fn declare(_ctx: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         Ok(1)
     }
 
     async fn prepare(
         declaration: Self::Declaration,
-        _ctx: PrepareContext<'_, I>,
+        _ctx: FieldPrepareContext<'_>,
     ) -> Result<Self::Preparation, Error> {
         Ok(declaration + 1)
     }
 
     async fn assemble(
         preparation: Self::Preparation,
-        _ctx: AssembleContext<'_, I>,
+        _ctx: FieldAssembleContext<'_>,
     ) -> Result<Self, Error> {
         Ok(Self(preparation + 1))
     }

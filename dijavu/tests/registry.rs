@@ -3,8 +3,8 @@
 use std::marker::PhantomData;
 
 use dijavu::{
-    AssembleContext, Builder, DeclareContext, Error, Injectable, InjectableField, Injector,
-    PrepareContext, Registered, RegisteredValues,
+    AssembleContext, Builder, DeclareContext, Error, FieldDeclareContext, Injectable,
+    InjectableField, Injector, PrepareContext, Registered, RegisteredValues,
     fields::{Depend, Value},
     state::{Declare, Prepare, Preparing},
 };
@@ -160,10 +160,7 @@ fn values_are_grouped_by_type() {
 struct RegistersSeven;
 
 impl RegistersSeven {
-    fn on_declare<I: Injectable>(
-        _state: &mut RegistersSevenState<I, Declare>,
-        mut ctx: DeclareContext<'_, I>,
-    ) -> Result<(), Error> {
+    fn on_declare(_state: &mut (), mut ctx: FieldDeclareContext<'_>) -> Result<(), Error> {
         ctx.register(Number(7));
         Ok(())
     }

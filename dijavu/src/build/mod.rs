@@ -7,10 +7,10 @@ mod prepare;
 mod registry;
 mod value_per_injectable;
 
-pub use self::assemble::AssembleContext;
-pub use self::declare::DeclareContext;
+pub use self::assemble::{AssembleContext, FieldAssembleContext};
+pub use self::declare::{DeclareContext, FieldDeclareContext};
 pub(crate) use self::dependency_graph::DependencyType;
-pub use self::prepare::{PrepareContext, PreparingHandle};
+pub use self::prepare::{FieldPrepareContext, PrepareContext, PreparingHandle};
 pub use self::registry::{Registered, RegisteredValues};
 
 use crate::{
@@ -102,3 +102,58 @@ impl<Step> BuildState<Step> {
         state.with_step(step).0
     }
 }
+
+/// Defines the context that gives an injectable access to the build during one build step, based on
+/// the context that its fields receive during that step.
+macro_rules! injectable_context {
+    ($name:ident, $field:ident, $step:literal) => {
+        #[doc = concat!(
+            "Gives the injectable `I` access to the build during the ", $step, " step.\n\n",
+            "Everything provided by [`", stringify!($field), "`] is available through deref. There ",
+            "is no public way to create this type."
+        )]
+        pub struct $name<'ctx, I: crate::Injectable> {
+            field: $field<'ctx>,
+            injectable: std::marker::PhantomData<fn() -> I>,
+        }
+
+        impl<'ctx, I: crate::Injectable> $name<'ctx, I> {
+            pub(super) fn new(field: $field<'ctx>) -> Self {
+                Self {
+                    field,
+                    injectable: std::marker::PhantomData,
+                }
+            }
+
+            /// Returns a token for the injectable `I` itself.
+            pub fn inject_token(&self) -> crate::fields::InjectToken<I> {
+                crate::fields::InjectToken::new()
+            }
+
+            /// Returns an owned context borrowing from this one, e.g. to pass it to a hook.
+            pub fn reborrow(&mut self) -> $name<'_, I> {
+                $name::new(self.field.reborrow())
+            }
+
+            /// Returns the context for calling the functions of a field.
+            pub fn field(&mut self) -> $field<'_> {
+                self.field.reborrow()
+            }
+        }
+
+        impl<'ctx, I: crate::Injectable> std::ops::Deref for $name<'ctx, I> {
+            type Target = $field<'ctx>;
+
+            fn deref(&self) -> &Self::Target {
+                &self.field
+            }
+        }
+
+        impl<'ctx, I: crate::Injectable> std::ops::DerefMut for $name<'ctx, I> {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.field
+            }
+        }
+    };
+}
+use injectable_context;

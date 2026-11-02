@@ -6,10 +6,10 @@ error[E0277]: the trait bound `u32: Registered` is not satisfied
 4 | #[injectable(register(1u32))]
   |                       ^^^^ the trait `Registered` is not implemented for `u32`
   |
-note: required by a bound in `DeclareContext::<'a, I>::register`
+note: required by a bound in `FieldDeclareContext::<'a>::register`
  --> src/build/declare.rs
   |
-  | impl<'a, I> DeclareContext<'a, I>
+  | impl<'a> FieldDeclareContext<'a> {
 ...
   |     pub fn register<R: Registered>(&mut self, value: R) {
-  |                        ^^^^^^^^^^ required by this bound in `DeclareContext::<'a, I>::register`
+  |                        ^^^^^^^^^^ required by this bound in `FieldDeclareContext::<'a>::register`
