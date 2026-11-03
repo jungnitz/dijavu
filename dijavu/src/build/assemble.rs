@@ -1,7 +1,7 @@
 use std::any::type_name;
 
 use crate::{
-    Error, Injectable, Target,
+    Error, Injectable, Target, UnsizeFrom,
     build::{
         BuildState, Registered, RegisteredValues,
         dependency_graph::{DependencyType, NodeIndex},
@@ -59,6 +59,20 @@ impl<'ctx> FieldAssembleContext<'ctx> {
             .dependency_graph
             .add_dependency(self.node_index, to_index, DependencyType::Soft);
         Ref::new()
+    }
+
+    /// Returns a reference to the injectable `To`, referenced as `B` (e.g. a trait object), which
+    /// will be enabled once the build has finished.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `To` has not been added during the declare step.
+    pub(crate) fn get_ref_as<B: ?Sized + UnsizeFrom<To>, To: Injectable>(&mut self) -> Ref<B> {
+        let to_index = self.state.dependency_graph.get_index::<To>();
+        self.state
+            .dependency_graph
+            .add_dependency(self.node_index, to_index, DependencyType::Soft);
+        Ref::unsized_from::<To>()
     }
 
     /// Returns a reference to the injectable `To` is bound to, which will be enabled once the

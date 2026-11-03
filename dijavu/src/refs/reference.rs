@@ -2,7 +2,7 @@ use std::{ops::Deref, ptr::NonNull};
 
 use crate::{
     Injectable,
-    refs::{Bindable, Injectables},
+    refs::{Injectables, UnsizeFrom},
 };
 
 /// References something within an [`Injector`](crate::Injector).
@@ -30,17 +30,17 @@ impl<T: Injectable> Ref<T> {
 impl<T: ?Sized> Ref<T> {
     /// Creates a new [`Ref`] to the injectable `I`, referenced as `T` (e.g. a trait object), that
     /// will panic when dereferenced.
-    pub(crate) fn bound<I: Injectable>() -> Self
+    pub(crate) fn unsized_from<I: Injectable>() -> Self
     where
-        T: Bindable<I>,
+        T: UnsizeFrom<I>,
     {
-        fn resolve<B: ?Sized + Bindable<I>, I: Injectable>(
+        fn resolve<U: ?Sized + UnsizeFrom<I>, I: Injectable>(
             injectables: &Injectables,
-        ) -> Option<NonNull<B>> {
-            injectables.get_ptr::<I>().map(B::coerce)
+        ) -> Option<NonNull<U>> {
+            injectables.get_ptr::<I>().map(U::coerce)
         }
 
-        // SAFETY: the pointer is obtained from `get_ptr` and converted via `Bindable::coerce`,
+        // SAFETY: the pointer is obtained from `get_ptr` and converted via `UnsizeFrom::coerce`,
         // whose safety requirements guarantee that it is an unsizing coercion
         unsafe { Self::with_resolver(resolve::<T, I>) }
     }

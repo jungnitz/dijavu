@@ -1,0 +1,35 @@
+error[E0277]: the trait bound `NotAService: Service` is not satisfied
+  --> tests/ui/inject_all_not_implemented.rs:25:28
+   |
+25 |         state.services.add(state.not_a_service);
+   |                        --- ^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |                        |
+   |                        required by a bound introduced by this call
+   |
+help: the trait `Service` is not implemented for `NotAService`
+  --> tests/ui/inject_all_not_implemented.rs:11:1
+   |
+11 | struct NotAService;
+   | ^^^^^^^^^^^^^^^^^^
+help: this trait has no implementations, consider adding one
+  --> tests/ui/inject_all_not_implemented.rs:7:1
+   |
+ 7 | trait Service: Send + Sync {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required for `(dyn Service + 'static)` to implement `UnsizeFrom<NotAService>`
+  --> tests/ui/inject_all_not_implemented.rs:8:1
+   |
+ 8 | dijavu::unsizable!(Service);
+   | ^^^^^^^^^^^^^^^^^^^-------^
+   |                    |
+   |                    unsatisfied trait bound introduced here
+note: required by a bound in `InjectAllState::<D>::add`
+  --> src/fields/inject_all.rs
+   |
+   | impl<D: ?Sized + Send + Sync + 'static> InjectAllState<D> {
+...
+   |     pub fn add<T: Injectable>(&mut self, _token: InjectToken<T>)
+   |     where
+   |         D: UnsizeFrom<T>,
+   |            ^^^^^^^^^^^^^ required by this bound in `InjectAllState::<D>::add`
+   = note: this error originates in the macro `dijavu::unsizable` (in Nightly builds, run with -Z macro-backtrace for more info)

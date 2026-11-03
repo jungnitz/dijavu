@@ -19,7 +19,7 @@ pub use error::Error;
 pub use fields::InjectableField;
 pub use injectable::{Injectable, Preparing};
 pub use injector::Injector;
-pub use refs::{Bindable, RefVisitor, Visitable};
+pub use refs::{Bindable, RefVisitor, UnsizeFrom, Visitable};
 pub use target::Target;
 
 /// Derives [`Injectable`] and [`Visitable`] for a struct whose fields all implement

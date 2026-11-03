@@ -8,7 +8,7 @@ mod injectables;
 mod reference;
 mod visitable;
 
-pub use bindable::Bindable;
+pub use bindable::{Bindable, UnsizeFrom};
 pub(crate) use injectables::Injectables;
 pub(crate) use reference::Ref;
 pub use reference::RefVisitor;

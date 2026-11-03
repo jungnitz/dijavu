@@ -2,11 +2,13 @@
 
 mod depend;
 mod inject;
+mod inject_all;
 mod input;
 mod value;
 
 pub use depend::*;
 pub use inject::*;
+pub use inject_all::*;
 pub use input::*;
 pub use value::*;
 

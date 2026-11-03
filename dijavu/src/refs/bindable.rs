@@ -2,24 +2,57 @@ use std::ptr::NonNull;
 
 use crate::{Injectable, Target};
 
-/// A [`Target`] that can be bound to the injectable `I`.
+/// An unsized type (e.g. a trait object) that a pointer to `T` can be converted to.
 ///
-/// Implement this for trait objects via [`bindable!`](crate::bindable).
+/// Implement this for trait objects via [`unsizable!`](crate::unsizable) or
+/// [`bindable!`](crate::bindable), depending on the use-case.
 ///
 /// # Safety
 ///
 /// [`coerce`](Self::coerce) must return a pointer to the same value as `ptr`, only adding
 /// metadata (i.e. it must perform an unsizing coercion like `ptr as NonNull<dyn Trait>`).
-pub unsafe trait Bindable<I: Injectable>: Target {
-    /// Converts a pointer to the injectable into a pointer to this target.
-    fn coerce(ptr: NonNull<I>) -> NonNull<Self>;
+pub unsafe trait UnsizeFrom<T>: Send + Sync + 'static {
+    /// Converts a pointer to `T` into a pointer to this type.
+    fn coerce(ptr: NonNull<T>) -> NonNull<Self>;
+}
+
+/// A [`Target`] that can be bound to the injectable `I`.
+///
+/// Implement this for trait objects via [`bindable!`](crate::bindable).
+pub trait Bindable<I: Injectable>: Target + UnsizeFrom<I> {}
+
+/// Implement [`UnsizeFrom`] for trait objects.
+///
+/// This implements [`UnsizeFrom`] for `dyn _`, so that `InjectAll<dyn _>` can be used. As nothing
+/// can be bound to `dyn _`, `Inject<dyn _>` and `Depend<dyn _>` do not compile, unless
+/// [`bindable!`](crate::bindable) is used instead. The trait object must be `Send + Sync`, either
+/// via supertraits or by adding the bounds:
+///
+/// ```
+/// trait Service: Send + Sync {}
+/// dijavu::unsizable!(Service);
+///
+/// trait Other {}
+/// dijavu::unsizable!(Other + Send + Sync);
+/// ```
+#[macro_export]
+macro_rules! unsizable {
+    ($($bounds:tt)+) => {
+        // SAFETY: performs an unsizing coercion
+        unsafe impl<T: 'static + $($bounds)+> $crate::UnsizeFrom<T> for dyn $($bounds)+ {
+            fn coerce(ptr: ::core::ptr::NonNull<T>) -> ::core::ptr::NonNull<Self> {
+                ptr
+            }
+        }
+    };
 }
 
 /// Allows binding a trait object to injectables implementing the trait.
 ///
 /// This implements [`Target`] and [`Bindable`] for `dyn _`, so that `Inject<dyn _>` and
-/// `Depend<dyn _>` can be used. The trait object must be `Send + Sync`, either via supertraits or
-/// by adding the bounds:
+/// `Depend<dyn _>` can be used. It includes [`unsizable!`](crate::unsizable), so `InjectAll<dyn _>`
+/// can be used as well. The trait object must be `Send + Sync`, either via supertraits or by adding
+/// the bounds:
 ///
 /// ```
 /// trait Service: Send + Sync {}
@@ -31,15 +64,10 @@ pub unsafe trait Bindable<I: Injectable>: Target {
 #[macro_export]
 macro_rules! bindable {
     ($($bounds:tt)+) => {
+        $crate::unsizable!($($bounds)+);
+
         impl $crate::Target for dyn $($bounds)+ {}
 
-        // SAFETY: performs an unsizing coercion
-        unsafe impl<I: $crate::Injectable + $($bounds)+> $crate::Bindable<I>
-            for dyn $($bounds)+
-        {
-            fn coerce(ptr: ::core::ptr::NonNull<I>) -> ::core::ptr::NonNull<Self> {
-                ptr
-            }
-        }
+        impl<I: $crate::Injectable + $($bounds)+> $crate::Bindable<I> for dyn $($bounds)+ {}
     };
 }

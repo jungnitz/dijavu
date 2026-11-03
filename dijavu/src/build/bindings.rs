@@ -46,7 +46,7 @@ impl Bindings {
     /// first.
     pub(super) fn bind<B: ?Sized + Bindable<I>, I: Injectable>(&mut self, node_index: NodeIndex) {
         if let MapEntry::Vacant(vacant) = self.entries.entry(TypeId::of::<B>()) {
-            let new_ref: fn() -> Ref<B> = Ref::bound::<I>;
+            let new_ref: fn() -> Ref<B> = Ref::unsized_from::<I>;
             vacant.insert(Binding {
                 node_index,
                 impl_type_id: TypeId::of::<I>(),
