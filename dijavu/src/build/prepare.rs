@@ -115,9 +115,9 @@ impl BuildState<PrepareStep> {
         })
     }
 
-    pub(super) async fn prepare(mut self) -> Result<BuildState<Preparations>, Error> {
+    pub(super) async fn prepare(mut self) -> Result<BuildState<Prepared>, Error> {
         let order = self.dependency_graph.topological_sort()?;
-        for node_index in order {
+        for &node_index in &order {
             let node = self.dependency_graph.get(node_index);
             (node.prepare)(&mut self, node_index).await?;
         }
@@ -126,7 +126,10 @@ impl BuildState<PrepareStep> {
             self.step.preparations.len(),
             self.dependency_graph.node_count()
         );
-        Ok(self.map_step(|step, _| step.preparations))
+        Ok(self.map_step(|step, _| Prepared {
+            preparations: step.preparations,
+            order,
+        }))
     }
 
     pub(super) async fn prepare_one<I: Injectable>(
@@ -145,6 +148,13 @@ impl BuildState<PrepareStep> {
         self.step.preparations.insert::<I>(index, preparation);
         Ok(())
     }
+}
+
+/// The result of the prepare step.
+pub(super) struct Prepared {
+    pub(super) preparations: Preparations,
+    /// The nodes in dependency order
+    pub(super) order: Vec<NodeIndex>,
 }
 
 pub(super) struct Preparations(ValuePerInjectable);

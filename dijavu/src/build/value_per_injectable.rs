@@ -2,7 +2,7 @@ use std::any::Any;
 
 use crate::build::dependency_graph::NodeIndex;
 
-/// Storage for `Declaration` and `Preparation` instances of each injectable.
+/// Storage for `Declaration`, `Preparation` and `Start` instances of each injectable.
 ///
 /// The values are stored as `Box<dyn Any + Send>` and accessed by the index of the injectable's
 /// node in the dependency graph.

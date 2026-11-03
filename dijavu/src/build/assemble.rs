@@ -6,7 +6,9 @@ use crate::{
         BuildState, Registered, RegisteredValues,
         dependency_graph::{DependencyType, NodeIndex},
         injectable_context,
-        prepare::Preparations,
+        prepare::{Preparations, Prepared},
+        start::Starts,
+        value_per_injectable::ValuePerInjectable,
     },
     error::MissingInputError,
     fields::Input,
@@ -96,17 +98,24 @@ impl<'ctx> FieldAssembleContext<'ctx> {
 pub(super) struct AssembleStep {
     preparations: Preparations,
     injectables: Injectables,
+    /// The `Start` of each injectable
+    starts: ValuePerInjectable,
+    /// The nodes in dependency order
+    order: Vec<NodeIndex>,
 }
 
 impl BuildState<AssembleStep> {
-    pub(super) fn new(state: BuildState<Preparations>) -> Self {
-        state.map_step(|preparations, _| AssembleStep {
-            injectables: Injectables::with_capacity(preparations.len()),
-            preparations,
+    pub(super) fn new(state: BuildState<Prepared>) -> Self {
+        state.map_step(|prepared, _| AssembleStep {
+            injectables: Injectables::with_capacity(prepared.preparations.len()),
+            starts: ValuePerInjectable::with_capacity(prepared.preparations.len()),
+            preparations: prepared.preparations,
+            order: prepared.order,
         })
     }
 
-    pub(super) async fn assemble(mut self) -> Result<Injectables, Error> {
+    /// Assembles all injectables and returns them, along with what is needed to start them.
+    pub(super) async fn assemble(mut self) -> Result<(Injectables, Starts), Error> {
         // from here on no nodes are added to the dependency graph, so we can iterate over the
         // nodes sequentially via indices
         for node_index in 0..self.dependency_graph.node_count() {
@@ -120,7 +129,17 @@ impl BuildState<AssembleStep> {
             self.dependency_graph.node_count()
         );
         self.step.injectables.enable_refs();
-        Ok(self.step.injectables)
+        let order = self
+            .step
+            .order
+            .iter()
+            .map(|&node_index| (node_index, self.dependency_graph.get(node_index).start))
+            .collect();
+        let starts = Starts {
+            order,
+            values: self.step.starts,
+        };
+        Ok((self.step.injectables, starts))
     }
 
     pub(super) async fn assemble_one<I: Injectable>(
@@ -128,7 +147,7 @@ impl BuildState<AssembleStep> {
         index: NodeIndex,
     ) -> Result<(), Error> {
         let preparation = self.step.preparations.remove::<I>(index);
-        let injectable = I::assemble(
+        let (injectable, start) = I::assemble(
             preparation,
             AssembleContext::new(FieldAssembleContext {
                 state: self,
@@ -137,6 +156,7 @@ impl BuildState<AssembleStep> {
         )
         .await?;
         self.step.injectables.set::<I>(injectable);
+        self.step.starts.insert::<I::Start>(index, start);
         Ok(())
     }
 }

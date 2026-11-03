@@ -140,6 +140,7 @@ impl<D: ?Sized + Send + Sync + 'static> InjectAll<D> {
 impl<D: ?Sized + Send + Sync + 'static> InjectableField for InjectAll<D> {
     type Declaration = InjectAllState<D>;
     type Preparation = InjectAllState<D>;
+    type Start = ();
 
     fn declare(_ctx: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         Ok(InjectAllState {
@@ -157,14 +158,13 @@ impl<D: ?Sized + Send + Sync + 'static> InjectableField for InjectAll<D> {
     async fn assemble(
         preparation: Self::Preparation,
         mut ctx: FieldAssembleContext<'_>,
-    ) -> Result<Self, Error> {
-        Ok(Self(
-            preparation
-                .get_refs
-                .into_iter()
-                .map(|get_ref| get_ref(&mut ctx))
-                .collect(),
-        ))
+    ) -> Result<(Self, Self::Start), Error> {
+        let refs = preparation
+            .get_refs
+            .into_iter()
+            .map(|get_ref| get_ref(&mut ctx))
+            .collect();
+        Ok((Self(refs), ()))
     }
 }
 

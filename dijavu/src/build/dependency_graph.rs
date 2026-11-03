@@ -6,7 +6,12 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     Error, Injectable,
-    build::{BuildState, assemble::AssembleStep, prepare::PrepareStep},
+    build::{
+        BuildState,
+        assemble::AssembleStep,
+        prepare::PrepareStep,
+        start::{StartFn, start_fn},
+    },
     error::CycleError,
 };
 
@@ -86,6 +91,7 @@ pub struct Node {
     name: Cow<'static, str>,
     pub(super) prepare: StepFn<PrepareStep>,
     pub(super) assemble: StepFn<AssembleStep>,
+    pub(super) start: StartFn,
 }
 
 impl Node {
@@ -94,6 +100,7 @@ impl Node {
             name: T::name(),
             prepare: |state, index| Box::pin(state.prepare_one::<T>(index)),
             assemble: |state, index| Box::pin(state.assemble_one::<T>(index)),
+            start: start_fn::<T>(),
         }
     }
 

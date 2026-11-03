@@ -5,6 +5,7 @@ mod dependency_graph;
 mod inputs;
 mod prepare;
 mod registry;
+mod start;
 mod value_per_injectable;
 
 pub use self::assemble::{AssembleContext, FieldAssembleContext};
@@ -12,6 +13,7 @@ pub use self::declare::{DeclareContext, FieldDeclareContext};
 pub(crate) use self::dependency_graph::DependencyType;
 pub use self::prepare::{FieldPrepareContext, PrepareContext, PreparingHandle};
 pub use self::registry::{Registered, RegisteredValues};
+pub use self::start::StartContext;
 
 use crate::{
     Bindable, Error, Injectable, Injector,
@@ -59,14 +61,17 @@ impl Builder {
         self
     }
 
-    /// Runs all build steps and returns the resulting [`Injector`].
+    /// Runs all build steps, then starts the injectables (see [`Injectable::start`]) and returns
+    /// the resulting [`Injector`].
     pub async fn build(self) -> Result<Injector, Error> {
         let state = self.state.declare()?;
         let state = BuildState::<PrepareStep>::new(state);
         let state = state.prepare().await?;
         let state = BuildState::<AssembleStep>::new(state);
-        let injectables = state.assemble().await?;
-        Ok(Injector::new(injectables))
+        let (injectables, starts) = state.assemble().await?;
+        let injector = Injector::new(injectables);
+        starts.start(&injector).await?;
+        Ok(injector)
     }
 }
 

@@ -27,6 +27,7 @@ impl<T> Value<T> {
 impl<T: Default + Send + Sync + 'static> InjectableField for Value<T> {
     type Declaration = T;
     type Preparation = T;
+    type Start = ();
 
     fn declare(_ctx: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         Ok(T::default())
@@ -42,8 +43,8 @@ impl<T: Default + Send + Sync + 'static> InjectableField for Value<T> {
     async fn assemble(
         preparation: Self::Preparation,
         _ctx: FieldAssembleContext<'_>,
-    ) -> Result<Self, Error> {
-        Ok(Self(preparation))
+    ) -> Result<(Self, Self::Start), Error> {
+        Ok((Self(preparation), ()))
     }
 }
 

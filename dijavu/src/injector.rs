@@ -1,13 +1,20 @@
+use std::sync::Arc;
+
 use crate::{Injectable, refs::Injectables};
 
 /// The result of a build, which owns all injectables.
+///
+/// Clones share the same injectables, which are dropped together with the last clone.
+#[derive(Clone)]
 pub struct Injector {
-    injectables: Injectables,
+    injectables: Arc<Injectables>,
 }
 
 impl Injector {
     pub(crate) fn new(injectables: Injectables) -> Self {
-        Self { injectables }
+        Self {
+            injectables: Arc::new(injectables),
+        }
     }
 
     /// Returns the injectable `T`.

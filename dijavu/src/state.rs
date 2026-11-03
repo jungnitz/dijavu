@@ -60,6 +60,25 @@ impl InjectableFieldState for Prepare {
         T: InjectableField;
 }
 
+/// The state after the assemble step, holding [`InjectableField::Start`] per field.
+pub struct Start(());
+
+impl<I> InjectableState<I> for Start {
+    type ContextField = ();
+
+    type Field<T>
+        = T::Start
+    where
+        T: InjectableField;
+}
+
+impl InjectableFieldState for Start {
+    type Field<T>
+        = T::Start
+    where
+        T: InjectableField;
+}
+
 /// Like [`Prepare`], with a [`PrepareContext`] as `ctx`, for access by other injectables.
 pub struct Preparing<'i>(PhantomData<&'i mut ()>);
 

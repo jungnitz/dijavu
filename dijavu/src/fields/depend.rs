@@ -23,6 +23,7 @@ pub struct Depend<T: ?Sized + Target>(Ref<T>);
 impl<T: ?Sized + Target> InjectableField for Depend<T> {
     type Declaration = DependToken<T>;
     type Preparation = DependToken<T>;
+    type Start = ();
 
     fn declare(mut init: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         T::declare(&mut init, DependencyType::Hard);
@@ -39,8 +40,8 @@ impl<T: ?Sized + Target> InjectableField for Depend<T> {
     async fn assemble(
         _init: Self::Preparation,
         mut builder: FieldAssembleContext<'_>,
-    ) -> Result<Self, Error> {
-        Ok(Depend(T::get_ref(&mut builder)))
+    ) -> Result<(Self, Self::Start), Error> {
+        Ok((Depend(T::get_ref(&mut builder)), ()))
     }
 }
 

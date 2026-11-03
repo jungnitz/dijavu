@@ -22,6 +22,9 @@ pub trait InjectableField: Visitable + Sized + Send + Sync + 'static {
     type Declaration: Send;
     /// The data of this field after the prepare step.
     type Preparation: Send;
+    /// The data created alongside this field by the assemble step, which becomes part of the
+    /// [`Injectable::Start`](crate::Injectable::Start) of the injectable containing it.
+    type Start: Send;
 
     /// Runs when the injectable containing this field is declared.
     fn declare(ctx: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error>;
@@ -32,9 +35,10 @@ pub trait InjectableField: Visitable + Sized + Send + Sync + 'static {
         ctx: FieldPrepareContext<'_>,
     ) -> impl Future<Output = Result<Self::Preparation, Error>> + Send;
 
-    /// Creates this field when the injectable containing it is assembled.
+    /// Creates this field when the injectable containing it is assembled, along with its
+    /// [`Start`](Self::Start).
     fn assemble(
         preparation: Self::Preparation,
         ctx: FieldAssembleContext<'_>,
-    ) -> impl Future<Output = Result<Self, Error>> + Send;
+    ) -> impl Future<Output = Result<(Self, Self::Start), Error>> + Send;
 }

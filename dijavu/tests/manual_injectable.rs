@@ -39,6 +39,10 @@ impl Injectable for Multiple {
     );
     type Preparation = MultiplePreparation;
     type Preparing<'ctx> = MultiplePreparing<'ctx>;
+    type Start = (
+        <This as InjectableField>::Start,
+        <Other as InjectableField>::Start,
+    );
 
     fn declare(mut ctx: DeclareContext<'_, Self>) -> Result<Self::Declaration, Error> {
         Ok((
@@ -67,11 +71,12 @@ impl Injectable for Multiple {
     async fn assemble(
         preparation: Self::Preparation,
         mut ctx: AssembleContext<'_, Self>,
-    ) -> Result<Self, Error> {
-        Ok(Self {
-            this: <This as InjectableField>::assemble(preparation.this, ctx.field()).await?,
-            other: <Other as InjectableField>::assemble(preparation.other, ctx.field()).await?,
-        })
+    ) -> Result<(Self, Self::Start), Error> {
+        let (this, this_start) =
+            <This as InjectableField>::assemble(preparation.this, ctx.field()).await?;
+        let (other, other_start) =
+            <Other as InjectableField>::assemble(preparation.other, ctx.field()).await?;
+        Ok((Self { this, other }, (this_start, other_start)))
     }
 }
 
@@ -92,6 +97,7 @@ struct Steps(#[visitable(skip)] u32);
 impl InjectableField for Steps {
     type Declaration = u32;
     type Preparation = u32;
+    type Start = ();
 
     fn declare(_ctx: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         Ok(1)
@@ -107,8 +113,8 @@ impl InjectableField for Steps {
     async fn assemble(
         preparation: Self::Preparation,
         _ctx: FieldAssembleContext<'_>,
-    ) -> Result<Self, Error> {
-        Ok(Self(preparation + 1))
+    ) -> Result<(Self, Self::Start), Error> {
+        Ok((Self(preparation + 1), ()))
     }
 }
 

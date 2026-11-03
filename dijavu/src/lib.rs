@@ -12,6 +12,7 @@ mod target;
 pub use build::{
     AssembleContext, Builder, DeclareContext, FieldAssembleContext, FieldDeclareContext,
     FieldPrepareContext, PrepareContext, PreparingHandle, Registered, RegisteredValues,
+    StartContext,
 };
 #[doc(inline)]
 pub use error::Error;
@@ -30,6 +31,9 @@ pub use target::Target;
 /// (the last field for tuple structs). Add methods to `FooState<state::Preparing<'_>>` to allow
 /// other injectables to configure `Foo`, see [`FieldPrepareContext::get`].
 ///
+/// `FooState<Start>` holds the [`InjectableField::Start`] of each field and is the
+/// [`Injectable::Start`] of `Foo`.
+///
 /// The following attributes can be used as `#[injectable(...)]` on the struct. All hooks return a
 /// `Result<(), E>` with `E: Into<Error>`.
 ///
@@ -43,6 +47,8 @@ pub use target::Target;
 ///   fields are prepared
 /// - `assemble = hook`: `async fn(&mut FooState<Prepare>, AssembleContext<'_, Self>)`, runs before
 ///   the fields are assembled
+/// - `start = hook`: `async fn(&Foo, FooState<Start>, StartContext<'_, Self>)`, implements
+///   [`Injectable::start`]
 ///
 /// Fields can be excluded from visiting via `#[visitable(skip)]`.
 ///
@@ -55,9 +61,9 @@ pub use dijavu_macros::Injectable;
 /// Derives [`InjectableField`] and [`Visitable`] for a struct whose fields all implement
 /// [`InjectableField`].
 ///
-/// This works like the derive macro for [`Injectable`](macro@Injectable), except that `bind` is not
-/// supported, as binding requires an injectable, and that hooks receive the context of a field, like
-/// [`FieldPrepareContext`].
+/// This works like the derive macro for [`Injectable`](macro@Injectable), except that `bind` and
+/// `start` are not supported, as they require an injectable, and that hooks receive the context of a
+/// field, like [`FieldPrepareContext`].
 ///
 /// The generated state has no `ctx` field. A struct without any fields has nothing to hold, so no
 /// state struct is generated for it, and its hooks receive `&mut ()` as the state.

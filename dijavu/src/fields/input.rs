@@ -61,6 +61,7 @@ impl<T> Clone for Input<T> {
 impl<T: Send + Sync + 'static> InjectableField for Input<T> {
     type Declaration = Input<T>;
     type Preparation = Input<T>;
+    type Start = ();
 
     fn declare(ctx: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         Ok(ctx.input()?)
@@ -76,8 +77,8 @@ impl<T: Send + Sync + 'static> InjectableField for Input<T> {
     async fn assemble(
         preparation: Self::Preparation,
         _ctx: FieldAssembleContext<'_>,
-    ) -> Result<Self, Error> {
-        Ok(preparation)
+    ) -> Result<(Self, Self::Start), Error> {
+        Ok((preparation, ()))
     }
 }
 

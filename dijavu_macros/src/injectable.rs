@@ -28,6 +28,7 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
     let declaration = derive.state_ty(quote!(dijavu::state::Declare));
     let preparation = derive.state_ty(quote!(dijavu::state::Prepare));
     let preparing = derive.state_ty(quote!(dijavu::state::Preparing<'__ctx>));
+    let start = derive.state_ty(quote!(dijavu::state::Start));
 
     let steps = derive.steps(
         &Contexts {
@@ -44,6 +45,21 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
     let mut preparing_generics = input.generics.clone();
     preparing_generics.params.insert(0, parse_quote!('__ctx));
     let (preparing_impl_gen, _, _) = preparing_generics.split_for_impl();
+
+    let start_fn = derive.args.start.as_ref().map(|hook| {
+        quote!(
+            async fn start(
+                &self,
+                __state: Self::Start,
+                __ctx: dijavu::StartContext<'_, Self>,
+            ) -> ::core::result::Result<(), dijavu::Error> {
+                ::core::result::Result::map_err(
+                    (#hook)(self, __state, __ctx).await,
+                    ::core::convert::Into::<dijavu::Error>::into,
+                )
+            }
+        )
+    });
 
     let ctx = &derive.ctx;
     let members = derive.fields.iter().map(|field| &field.member);
@@ -69,8 +85,11 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
             type Declaration = #declaration;
             type Preparation = #preparation;
             type Preparing<'__ctx> = #preparing;
+            type Start = #start;
 
             #steps
+
+            #start_fn
 
             fn make_preparing<'__ctx>(
                 preparation: Self::Preparation,
@@ -91,6 +110,12 @@ pub fn derive_injectable_field(input: DeriveInput) -> syn::Result<TokenStream> {
             "`bind` is not supported for `InjectableField`",
         ));
     }
+    if let Some(start) = &derive.args.start {
+        return Err(syn::Error::new(
+            start.span(),
+            "`start` is not supported for `InjectableField`",
+        ));
+    }
 
     // unlike for injectables, bounds on the field types can't lead to cycles here
     let mut generics = input.generics.clone();
@@ -105,6 +130,7 @@ pub fn derive_injectable_field(input: DeriveInput) -> syn::Result<TokenStream> {
     let state_struct = derive.state_struct(&generics, &quote!(dijavu::state::InjectableFieldState));
     let declaration = derive.state_ty(quote!(dijavu::state::Declare));
     let preparation = derive.state_ty(quote!(dijavu::state::Prepare));
+    let start = derive.state_ty(quote!(dijavu::state::Start));
     let steps = derive.steps(
         &Contexts {
             declare: quote!(dijavu::FieldDeclareContext<'_>),
@@ -129,6 +155,7 @@ pub fn derive_injectable_field(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_gen dijavu::InjectableField for #ident #ty_gen #where_clause {
             type Declaration = #declaration;
             type Preparation = #preparation;
+            type Start = #start;
 
             #steps
         }
@@ -146,6 +173,7 @@ mod args {
         pub declare: Option<Expr>,
         pub prepare: Option<Expr>,
         pub assemble: Option<Expr>,
+        pub start: Option<Expr>,
         #[darling(multiple)]
         pub bind: Vec<List<Type>>,
         #[darling(multiple)]
@@ -363,7 +391,14 @@ impl<'a> Derive<'a> {
         let declaration = self.state_value(&field("declare", |_| quote!(), quote!()));
         let preparation =
             self.state_value(&field("prepare", |m| quote!(__state.#m,), quote!(.await)));
-        let assemble_fields = field("assemble", |m| quote!(__state.#m,), quote!(.await));
+
+        // each field is assembled into a tuple of the field and its `Start`
+        let assembled: Vec<_> = (0..self.fields.len())
+            .map(|index| format_ident!("__field_{index}"))
+            .collect();
+        let members: Vec<_> = self.fields.iter().map(|field| &field.member).collect();
+        let types: Vec<_> = self.fields.iter().map(|field| field.ty).collect();
+        let start = self.state_value(&quote!(#(#members: #assembled.1,)*));
 
         let declare_hook = run_hook(self.args.declare.as_ref(), quote!());
         let prepare_hook = run_hook(self.args.prepare.as_ref(), quote!(.await));
@@ -398,9 +433,17 @@ impl<'a> Derive<'a> {
             async fn assemble(
                 mut __state: Self::Preparation,
                 mut __ctx: #assemble_ctx,
-            ) -> ::core::result::Result<Self, dijavu::Error> {
+            ) -> ::core::result::Result<(Self, Self::Start), dijavu::Error> {
                 #assemble_hook
-                ::core::result::Result::Ok(Self { #assemble_fields })
+                #(
+                    let #assembled = <#types as dijavu::InjectableField>::assemble(
+                        __state.#members, #for_field
+                    ).await?;
+                )*
+                ::core::result::Result::Ok((
+                    Self { #(#members: #assembled.0,)* },
+                    #start,
+                ))
             }
         )
     }

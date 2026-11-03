@@ -24,6 +24,7 @@ impl Injectable for Leaky {
     type Declaration = ();
     type Preparation = ();
     type Preparing<'ctx> = LeakyPreparing<'ctx>;
+    type Start = ();
 
     fn declare(ctx: DeclareContext<'_, Self>) -> Result<(), Error> {
         stash(ctx);
@@ -41,8 +42,11 @@ impl Injectable for Leaky {
         LeakyPreparing(ctx)
     }
 
-    async fn assemble(_preparation: (), _ctx: AssembleContext<'_, Self>) -> Result<Self, Error> {
-        Ok(Leaky)
+    async fn assemble(
+        _preparation: (),
+        _ctx: AssembleContext<'_, Self>,
+    ) -> Result<(Self, ()), Error> {
+        Ok((Leaky, ()))
     }
 }
 
