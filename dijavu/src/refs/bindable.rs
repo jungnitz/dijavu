@@ -9,11 +9,17 @@ use crate::{Injectable, Target};
 ///
 /// # Safety
 ///
-/// [`coerce`](Self::coerce) must return a pointer to the same value as `ptr`, only adding
-/// metadata (i.e. it must perform an unsizing coercion like `ptr as NonNull<dyn Trait>`).
+/// Each method must return a pointer, reference or box to the same value as its argument, only
+/// adding metadata (i.e. it must perform an unsizing coercion like `ptr as NonNull<dyn Trait>`).
 pub unsafe trait UnsizeFrom<T>: Send + Sync + 'static {
     /// Converts a pointer to `T` into a pointer to this type.
-    fn coerce(ptr: NonNull<T>) -> NonNull<Self>;
+    fn coerce_ptr(ptr: NonNull<T>) -> NonNull<Self>;
+
+    /// Converts a reference to `T` into a reference to this type.
+    fn coerce_ref(t: &T) -> &Self;
+
+    /// Converts a boxed `T` into a box of this type, keeping the same allocation.
+    fn coerce_box(t: Box<T>) -> Box<Self>;
 }
 
 /// A [`Target`] that can be bound to the injectable `I`.
@@ -40,8 +46,16 @@ macro_rules! unsizable {
     ($($bounds:tt)+) => {
         // SAFETY: performs an unsizing coercion
         unsafe impl<T: 'static + $($bounds)+> $crate::UnsizeFrom<T> for dyn $($bounds)+ {
-            fn coerce(ptr: ::core::ptr::NonNull<T>) -> ::core::ptr::NonNull<Self> {
+            fn coerce_ptr(ptr: ::core::ptr::NonNull<T>) -> ::core::ptr::NonNull<Self> {
                 ptr
+            }
+
+            fn coerce_ref(t: &T) -> &Self {
+                t
+            }
+
+            fn coerce_box(t: ::std::boxed::Box<T>) -> ::std::boxed::Box<Self> {
+                t
             }
         }
     };

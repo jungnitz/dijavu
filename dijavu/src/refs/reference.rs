@@ -37,11 +37,12 @@ impl<T: ?Sized> Ref<T> {
         fn resolve<U: ?Sized + UnsizeFrom<I>, I: Injectable>(
             injectables: &Injectables,
         ) -> Option<NonNull<U>> {
-            injectables.get_ptr::<I>().map(U::coerce)
+            injectables.get_ptr::<I>().map(U::coerce_ptr)
         }
 
-        // SAFETY: the pointer is obtained from `get_ptr` and converted via `UnsizeFrom::coerce`,
-        // whose safety requirements guarantee that it is an unsizing coercion
+        // SAFETY: the pointer is obtained from `get_ptr` and converted via
+        // `UnsizeFrom::coerce_ptr`, whose safety requirements guarantee that it is an unsizing
+        // coercion
         unsafe { Self::with_resolver(resolve::<T, I>) }
     }
 

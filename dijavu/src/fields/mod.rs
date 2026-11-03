@@ -1,12 +1,15 @@
 //! The fields injectables are made of.
 
 mod depend;
+#[expect(clippy::module_inception, reason = "different concepts")]
+mod fields;
 mod inject;
 mod inject_all;
 mod input;
 mod value;
 
 pub use depend::*;
+pub use fields::*;
 pub use inject::*;
 pub use inject_all::*;
 pub use input::*;
