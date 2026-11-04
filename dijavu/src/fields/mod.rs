@@ -8,6 +8,7 @@ mod inject_all;
 mod input;
 mod late;
 mod option;
+mod registered_values;
 mod start_value;
 mod value;
 

@@ -4,9 +4,9 @@ use std::marker::PhantomData;
 
 use dijavu::{
     AssembleContext, Builder, DeclareContext, Error, FieldDeclareContext, Injectable,
-    InjectableField, Injector, PrepareContext, Registered, RegisteredValues,
+    InjectableField, Injector, PrepareContext, Registered, RegisteredValues, StartContext,
     fields::{Depend, Value},
-    state::{Declare, Prepare, Preparing},
+    state::{Declare, Prepare, Preparing, Start},
 };
 use futures::executor::block_on;
 
@@ -226,6 +226,62 @@ fn registered_values_from_fields_are_kept_and_configure_dependencies() {
     let keeper = injector.get::<Keeper>();
     assert_eq!(keeper.kept.as_ref().unwrap().len(), 2);
     assert_eq!(*keeper.sum.0, 28);
+}
+
+/// Reads the values via a field, which holds them while building, after the build and in `Start`.
+#[derive(Injectable)]
+#[injectable(prepared = Self::on_prepared, start = Self::on_start)]
+struct NumbersField {
+    numbers: RegisteredValues<Number>,
+    prepared: Value<Vec<u32>>,
+    started: Value<std::sync::Mutex<Vec<u32>>>,
+}
+
+fn numbers(values: &RegisteredValues<Number>) -> Vec<u32> {
+    values.iter().map(|number| number.0).collect()
+}
+
+impl NumbersField {
+    async fn on_prepared(
+        state: &mut NumbersFieldState<Prepare>,
+        _ctx: PrepareContext<'_, Self>,
+    ) -> Result<(), Error> {
+        state.prepared = numbers(&state.numbers);
+        Ok(())
+    }
+
+    async fn on_start(
+        &self,
+        state: NumbersFieldState<Start>,
+        _ctx: StartContext<'_, Self>,
+    ) -> Result<(), Error> {
+        *self.started.lock().unwrap() = numbers(&state.numbers);
+        Ok(())
+    }
+}
+
+#[test]
+fn registered_values_as_field() {
+    let injector = build(|builder| {
+        builder
+            .add::<NumbersField>()
+            .add::<FirstWithField>()
+            .add::<SecondWithField>();
+    });
+    let field = injector.get::<NumbersField>();
+    assert_eq!(numbers(&field.numbers), [7, 7]);
+    assert_eq!(*field.prepared, [7, 7]);
+    assert_eq!(*field.started.lock().unwrap(), [7, 7]);
+}
+
+#[test]
+fn registered_values_as_field_without_values() {
+    let injector = build(|builder| {
+        builder.add::<NumbersField>();
+    });
+    let field = injector.get::<NumbersField>();
+    assert!(field.numbers.is_empty());
+    assert!(field.started.lock().unwrap().is_empty());
 }
 
 #[derive(Injectable)]
