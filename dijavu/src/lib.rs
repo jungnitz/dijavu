@@ -19,7 +19,7 @@ pub use error::Error;
 #[doc(inline)]
 pub use fields::InjectableField;
 pub use injectable::{Injectable, Preparing};
-pub use injector::Injector;
+pub use injector::{InjectableHandle, Injector};
 pub use refs::{Bindable, RefVisitor, UnsizeFrom, Visitable};
 pub use target::Target;
 

@@ -15,7 +15,7 @@ rustc-hash = { workspace = true }
 dijavu_macros = { workspace = true }
 petgraph = { workspace = true }
 thiserror = { workspace = true }
-
+yoke = { workspace = true }
 
 [dev-dependencies]
 trybuild = { workspace = true }

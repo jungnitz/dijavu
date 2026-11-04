@@ -16,6 +16,7 @@ petgraph = { version = "0.8.3", default-features = false }
 dijavu_macros = { path = "dijavu_macros", version = "0.0.1" }
 thiserror = "2"
 trybuild = "1"
+yoke = "0.8"
 
 syn = { version = "2", features = ["full"] }
 darling = "0.23"

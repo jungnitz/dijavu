@@ -97,6 +97,31 @@ fn getting_missing_injectable_names_it() {
     injector.get::<()>();
 }
 
+#[test]
+fn handles_keep_injectables_alive() {
+    let injector = build::<DependsOnPing>();
+    let ping = injector.get_handle::<Ping>();
+    assert!(ptr::eq(&*ping, injector.get::<Ping>()));
+    drop(injector);
+    // the references within the injectables stay enabled as well
+    assert!(ptr::eq(&*ping.pong.ping, &*ping));
+}
+
+#[test]
+fn get_handle_optional() {
+    let injector = build::<DependsOnPing>();
+    let ping = injector.get_handle_optional::<Ping>().unwrap();
+    assert!(ptr::eq(&*ping, injector.get::<Ping>()));
+    assert!(injector.get_handle_optional::<Unvisited>().is_none());
+}
+
+#[test]
+#[should_panic(expected = "`()` is not part of this injector")]
+fn getting_handle_to_missing_injectable_names_it() {
+    let injector = block_on(Builder::new().build()).unwrap();
+    let _ = injector.get_handle::<()>();
+}
+
 trait Service: Send + Sync {}
 dijavu::bindable!(Service);
 
