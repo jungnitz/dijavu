@@ -4,9 +4,9 @@ use std::sync::{
 };
 
 use dijavu::{
-    Builder, Error, Injectable, InjectableField, Injector, StartContext,
-    fields::{Depend, Inject, Value},
-    state::Start,
+    Builder, Error, Injectable, InjectableField, Injector, PrepareContext, StartContext,
+    fields::{Depend, Inject, StartValue, Value},
+    state::{Declare, Start},
 };
 use futures::executor::block_on;
 
@@ -226,4 +226,39 @@ fn start_contains_the_start_of_each_field() {
     let injector = build::<WithNumbers>().unwrap();
     let received = injector.get::<WithNumbers>().received.lock().unwrap();
     assert_eq!(*received, [2, 2]);
+}
+
+#[derive(Injectable)]
+#[injectable(prepare = Self::prepare, start = Self::on_start)]
+struct WithStartValue {
+    // `Cell` is not `Sync`, which is fine as the injectable never holds it
+    start_value: StartValue<std::cell::Cell<u32>>,
+    received: Value<AtomicU32>,
+}
+
+impl WithStartValue {
+    async fn prepare(
+        state: &mut WithStartValueState<Declare>,
+        _ctx: PrepareContext<'_, Self>,
+    ) -> Result<(), std::convert::Infallible> {
+        state.start_value.set(7);
+        Ok(())
+    }
+
+    async fn on_start(
+        &self,
+        state: WithStartValueState<Start>,
+        _ctx: StartContext<'_, Self>,
+    ) -> Result<(), std::convert::Infallible> {
+        self.received
+            .store(state.start_value.into_inner(), Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+#[test]
+fn start_value_is_passed_to_start() {
+    let injector = build::<WithStartValue>().unwrap();
+    let received = &injector.get::<WithStartValue>().received;
+    assert_eq!(received.load(Ordering::Relaxed), 7);
 }

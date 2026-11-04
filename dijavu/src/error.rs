@@ -53,6 +53,8 @@ pub enum ErrorKind {
     Unbound(UnboundError),
     /// See [`MissingInputError`].
     MissingInput(MissingInputError),
+    /// See [`UnsetLateError`].
+    UnsetLate(UnsetLateError),
     /// An error created via [`Error::custom`].
     Custom(Box<dyn StdError + Send + Sync + 'static>),
 }
@@ -142,5 +144,25 @@ impl MissingInputError {
 impl From<MissingInputError> for Error {
     fn from(value: MissingInputError) -> Self {
         Self::new(ErrorKind::MissingInput(value))
+    }
+}
+
+/// A [`Late`](crate::fields::Late) field has not been set before the assemble step
+#[derive(Debug, thiserror::Error)]
+#[error("`{injectable}` contains a `Late<{value}>` that has not been set")]
+pub struct UnsetLateError {
+    value: &'static str,
+    injectable: Cow<'static, str>,
+}
+
+impl UnsetLateError {
+    pub(crate) fn new(value: &'static str, injectable: Cow<'static, str>) -> Self {
+        Self { value, injectable }
+    }
+}
+
+impl From<UnsetLateError> for Error {
+    fn from(value: UnsetLateError) -> Self {
+        Self::new(ErrorKind::UnsetLate(value))
     }
 }

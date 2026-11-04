@@ -33,3 +33,13 @@ pub unsafe trait Visitable {
 unsafe impl Visitable for () {
     fn visit_refs(&mut self, _visitor: &mut RefVisitor<'_>) {}
 }
+
+// SAFETY: the contained value can only be taken or replaced through `&mut self`, so every call
+// visits the same references as long as `T` does
+unsafe impl<T: Visitable> Visitable for Option<T> {
+    fn visit_refs(&mut self, visitor: &mut RefVisitor<'_>) {
+        if let Some(value) = self {
+            value.visit_refs(visitor);
+        }
+    }
+}

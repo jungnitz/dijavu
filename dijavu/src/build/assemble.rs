@@ -1,4 +1,4 @@
-use std::any::type_name;
+use std::{any::type_name, borrow::Cow};
 
 use crate::{
     Error, Injectable, Target, UnsizeFrom,
@@ -48,6 +48,11 @@ impl<'ctx> FieldAssembleContext<'ctx> {
         self.state
             .inputs
             .get(self.state.dependency_graph.get(self.node_index))
+    }
+
+    /// Returns the name of the injectable being assembled, e.g. for errors.
+    pub(crate) fn injectable_name(&self) -> &Cow<'static, str> {
+        self.state.dependency_graph.get(self.node_index).name()
     }
 
     /// Returns a reference to `To`, which will be enabled once the build has finished.

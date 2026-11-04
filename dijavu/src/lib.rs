@@ -45,6 +45,8 @@ pub use target::Target;
 ///   objects need a cast, like `Box::new(MyPlugin) as Box<dyn Plugin>`.
 /// - `prepare = hook`: `async fn(&mut FooState<Declare>, PrepareContext<'_, Self>)`, runs before the
 ///   fields are prepared
+/// - `prepared = hook`: `async fn(&mut FooState<Prepare>, PrepareContext<'_, Self>)`, runs after
+///   the fields have been prepared
 /// - `assemble = hook`: `async fn(&mut FooState<Prepare>, AssembleContext<'_, Self>)`, runs before
 ///   the fields are assembled
 /// - `start = hook`: `async fn(&Foo, FooState<Start>, StartContext<'_, Self>)`, implements

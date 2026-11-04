@@ -6,6 +6,9 @@ mod fields;
 mod inject;
 mod inject_all;
 mod input;
+mod late;
+mod option;
+mod start_value;
 mod value;
 
 pub use depend::*;
@@ -13,6 +16,8 @@ pub use fields::*;
 pub use inject::*;
 pub use inject_all::*;
 pub use input::*;
+pub use late::*;
+pub use start_value::*;
 pub use value::*;
 
 use crate::{Error, FieldAssembleContext, FieldDeclareContext, FieldPrepareContext, Visitable};

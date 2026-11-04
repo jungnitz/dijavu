@@ -172,6 +172,7 @@ mod args {
     pub struct Args {
         pub declare: Option<Expr>,
         pub prepare: Option<Expr>,
+        pub prepared: Option<Expr>,
         pub assemble: Option<Expr>,
         pub start: Option<Expr>,
         #[darling(multiple)]
@@ -402,6 +403,7 @@ impl<'a> Derive<'a> {
 
         let declare_hook = run_hook(self.args.declare.as_ref(), quote!());
         let prepare_hook = run_hook(self.args.prepare.as_ref(), quote!(.await));
+        let prepared_hook = run_hook(self.args.prepared.as_ref(), quote!(.await));
         let assemble_hook = run_hook(self.args.assemble.as_ref(), quote!(.await));
         let registers = self.args.registers();
         let declare_ctx = &contexts.declare;
@@ -426,7 +428,9 @@ impl<'a> Derive<'a> {
                 mut __ctx: #prepare_ctx,
             ) -> ::core::result::Result<Self::Preparation, dijavu::Error> {
                 #prepare_hook
-                ::core::result::Result::Ok(#preparation)
+                let mut __state: Self::Preparation = #preparation;
+                #prepared_hook
+                ::core::result::Result::Ok(__state)
             }
 
             #[allow(unused_mut, unused_variables)]

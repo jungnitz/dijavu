@@ -225,6 +225,37 @@ fn declare_hook() {
 }
 
 #[derive(Injectable)]
+#[injectable(prepare = Self::on_prepare, prepared = Self::on_prepared)]
+struct WithPreparedHook {
+    value: Value<u32>,
+}
+
+impl WithPreparedHook {
+    async fn on_prepare(
+        state: &mut WithPreparedHookState<Declare>,
+        _ctx: PrepareContext<'_, Self>,
+    ) -> Result<(), std::convert::Infallible> {
+        state.value = 1;
+        Ok(())
+    }
+
+    async fn on_prepared(
+        state: &mut WithPreparedHookState<Prepare>,
+        _ctx: PrepareContext<'_, Self>,
+    ) -> Result<(), std::convert::Infallible> {
+        // runs after the prepare hook and the fields
+        state.value *= 10;
+        Ok(())
+    }
+}
+
+#[test]
+fn prepared_hook() {
+    let injector = build::<WithPreparedHook>();
+    assert_eq!(*injector.get::<WithPreparedHook>().value, 10);
+}
+
+#[derive(Injectable)]
 #[injectable(assemble = Self::on_assemble)]
 struct WithAssembleHook {
     value: Value<u32>,
