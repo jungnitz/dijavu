@@ -27,6 +27,10 @@ struct MultiplePreparing<'ctx> {
 }
 
 impl<'ctx> Preparing<'ctx, Multiple> for MultiplePreparing<'ctx> {
+    fn make(preparation: MultiplePreparation, ctx: PrepareContext<'ctx, Multiple>) -> Self {
+        MultiplePreparing { ctx, preparation }
+    }
+
     fn into_parts(self) -> (PrepareContext<'ctx, Multiple>, MultiplePreparation) {
         (self.ctx, self.preparation)
     }
@@ -59,13 +63,6 @@ impl Injectable for Multiple {
             this: <This as InjectableField>::prepare(this, ctx.field()).await?,
             other: <Other as InjectableField>::prepare(other, ctx.field()).await?,
         })
-    }
-
-    fn make_preparing<'ctx>(
-        preparation: Self::Preparation,
-        ctx: PrepareContext<'ctx, Self>,
-    ) -> Self::Preparing<'ctx> {
-        MultiplePreparing { ctx, preparation }
     }
 
     async fn assemble(

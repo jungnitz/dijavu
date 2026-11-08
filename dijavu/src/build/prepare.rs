@@ -55,7 +55,7 @@ impl<'ctx> FieldPrepareContext<'ctx> {
     ) -> PreparingHandle<'_, Other> {
         let node_index = self.state.dependency_graph.get_index::<Other>();
         let preparation = self.state.step.preparations.remove::<Other>(node_index);
-        let preparing = Other::make_preparing(
+        let preparing = Other::Preparing::make(
             preparation,
             PrepareContext::new(FieldPrepareContext {
                 state: self.state,

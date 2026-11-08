@@ -15,6 +15,10 @@ unsafe impl Visitable for Leaky {
 struct LeakyPreparing<'ctx>(PrepareContext<'ctx, Leaky>);
 
 impl<'ctx> Preparing<'ctx, Leaky> for LeakyPreparing<'ctx> {
+    fn make(_preparation: (), ctx: PrepareContext<'ctx, Leaky>) -> Self {
+        LeakyPreparing(ctx)
+    }
+
     fn into_parts(self) -> (PrepareContext<'ctx, Leaky>, ()) {
         (self.0, ())
     }
@@ -33,13 +37,6 @@ impl Injectable for Leaky {
 
     async fn prepare(_declaration: (), _ctx: PrepareContext<'_, Self>) -> Result<(), Error> {
         Ok(())
-    }
-
-    fn make_preparing<'ctx>(
-        _preparation: (),
-        ctx: PrepareContext<'ctx, Self>,
-    ) -> LeakyPreparing<'ctx> {
-        LeakyPreparing(ctx)
     }
 
     async fn assemble(

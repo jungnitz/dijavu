@@ -33,13 +33,6 @@ pub trait Injectable: Visitable + Sized + Send + Sync + 'static {
         ctx: PrepareContext<'_, Self>,
     ) -> impl Future<Output = Result<Self::Preparation, Error>> + Send;
 
-    /// Creates the state that other injectables access via
-    /// [`FieldPrepareContext::get`](crate::FieldPrepareContext::get).
-    fn make_preparing<'ctx>(
-        preparation: Self::Preparation,
-        ctx: PrepareContext<'ctx, Self>,
-    ) -> Self::Preparing<'ctx>;
-
     /// Builds this injectable, along with the data passed to [`start`](Self::start).
     fn assemble(
         preparation: Self::Preparation,
@@ -62,6 +55,10 @@ pub trait Injectable: Visitable + Sized + Send + Sync + 'static {
 
 /// The state of an injectable while other injectables access it, see [`Injectable::Preparing`].
 pub trait Preparing<'ctx, I: Injectable>: Send {
+    /// Creates the state that other injectables access via
+    /// [`FieldPrepareContext::get`](crate::FieldPrepareContext::get).
+    fn make(preparing: I::Preparation, ctx: PrepareContext<'ctx, I>) -> Self;
+
     /// Returns the context and the possibly modified preparation.
     fn into_parts(self) -> (PrepareContext<'ctx, I>, I::Preparation);
 }
@@ -83,13 +80,6 @@ impl Injectable for () {
         Ok(())
     }
 
-    fn make_preparing<'ctx>(
-        _preparation: Self::Preparation,
-        ctx: PrepareContext<'ctx, Self>,
-    ) -> Self::Preparing<'ctx> {
-        ctx
-    }
-
     async fn assemble(
         _preparation: Self::Preparation,
         _ctx: AssembleContext<'_, Self>,
@@ -99,12 +89,19 @@ impl Injectable for () {
 }
 
 impl<'ctx> Preparing<'ctx, ()> for PrepareContext<'ctx, ()> {
+    fn make(_preparing: <() as Injectable>::Preparation, ctx: PrepareContext<'ctx, ()>) -> Self {
+        ctx
+    }
     fn into_parts(self) -> (PrepareContext<'ctx, ()>, ()) {
         (self, ())
     }
 }
 
 impl<'ctx, I: Injectable> Preparing<'ctx, I> for (I::Preparation, PrepareContext<'ctx, I>) {
+    fn make(preparing: <I as Injectable>::Preparation, ctx: PrepareContext<'ctx, I>) -> Self {
+        (preparing, ctx)
+    }
+
     fn into_parts(self) -> (PrepareContext<'ctx, I>, I::Preparation) {
         (self.1, self.0)
     }

@@ -73,6 +73,13 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
 
         #[automatically_derived]
         impl #preparing_impl_gen dijavu::Preparing<'__ctx, #owner> for #preparing #where_clause {
+            fn make(
+                preparation: #preparation,
+                ctx: dijavu::PrepareContext<'__ctx, #owner>,
+            ) -> Self {
+                #state { #ctx: ctx, #(#members_again: preparation.#members_again,)* }
+            }
+
             fn into_parts(
                 self,
             ) -> (dijavu::PrepareContext<'__ctx, #owner>, #preparation) {
@@ -90,13 +97,6 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
             #steps
 
             #start_fn
-
-            fn make_preparing<'__ctx>(
-                preparation: Self::Preparation,
-                ctx: dijavu::PrepareContext<'__ctx, Self>,
-            ) -> Self::Preparing<'__ctx> {
-                #state { #ctx: ctx, #(#members_again: preparation.#members_again,)* }
-            }
         }
     ))
 }
@@ -408,7 +408,7 @@ impl<'a> Derive<'a> {
             self.args.prepared.as_ref().map(|hook| {
                 quote!(
                     let mut __preparing =
-                        <Self as dijavu::Injectable>::make_preparing(__state, __ctx);
+                        <Self::Preparing<'_> as dijavu::Preparing<'_, Self>>::make(__state, __ctx);
                     let _: () = ::core::result::Result::map_err(
                         (#hook)(&mut __preparing).await,
                         ::core::convert::Into::<dijavu::Error>::into,

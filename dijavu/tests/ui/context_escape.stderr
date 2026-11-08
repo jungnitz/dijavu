@@ -1,12 +1,12 @@
 error[E0521]: borrowed data escapes outside of associated function
-  --> tests/ui/context_escape.rs:30:9
+  --> tests/ui/context_escape.rs:34:9
    |
-29 |     fn declare(ctx: DeclareContext<'_, Self>) -> Result<(), Error> {
+33 |     fn declare(ctx: DeclareContext<'_, Self>) -> Result<(), Error> {
    |                ---
    |                |
    |                `ctx` is only valid in the associated function body
    |                has type `DeclareContext<'1, Leaky>`
-30 |         stash(ctx);
+34 |         stash(ctx);
    |         ^^^^^^^^^^
    |         |
    |         `ctx` escapes the associated function body here
