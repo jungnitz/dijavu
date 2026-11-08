@@ -60,3 +60,11 @@ impl<T> Deref for Value<T> {
         &self.0
     }
 }
+
+impl<T: Clone> Clone for Value<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T: Copy> Copy for Value<T> {}

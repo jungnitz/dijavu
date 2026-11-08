@@ -240,8 +240,7 @@ impl WithPreparedHook {
     }
 
     async fn on_prepared(
-        state: &mut WithPreparedHookState<Prepare>,
-        _ctx: PrepareContext<'_, Self>,
+        state: &mut WithPreparedHookState<Preparing<'_>>,
     ) -> Result<(), std::convert::Infallible> {
         // runs after the prepare hook and the fields
         state.value *= 10;

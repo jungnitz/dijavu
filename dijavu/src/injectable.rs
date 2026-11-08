@@ -103,3 +103,9 @@ impl<'ctx> Preparing<'ctx, ()> for PrepareContext<'ctx, ()> {
         (self, ())
     }
 }
+
+impl<'ctx, I: Injectable> Preparing<'ctx, I> for (I::Preparation, PrepareContext<'ctx, I>) {
+    fn into_parts(self) -> (PrepareContext<'ctx, I>, I::Preparation) {
+        (self.1, self.0)
+    }
+}

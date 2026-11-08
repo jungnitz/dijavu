@@ -19,7 +19,7 @@ pub use error::Error;
 #[doc(inline)]
 pub use fields::InjectableField;
 pub use injectable::{Injectable, Preparing};
-pub use injector::{InjectableHandle, Injector};
+pub use injector::{Injector, InjectorHandle};
 pub use refs::{Bindable, RefVisitor, UnsizeFrom, Visitable};
 pub use target::Target;
 
@@ -45,8 +45,8 @@ pub use target::Target;
 ///   objects need a cast, like `Box::new(MyPlugin) as Box<dyn Plugin>`.
 /// - `prepare = hook`: `async fn(&mut FooState<Declare>, PrepareContext<'_, Self>)`, runs before the
 ///   fields are prepared
-/// - `prepared = hook`: `async fn(&mut FooState<Prepare>, PrepareContext<'_, Self>)`, runs after
-///   the fields have been prepared
+/// - `prepared = hook`: `async fn(&mut FooState<Preparing<'_>>)`, runs after the fields have been
+///   prepared, with the context in the `ctx` field
 /// - `assemble = hook`: `async fn(&mut FooState<Prepare>, AssembleContext<'_, Self>)`, runs before
 ///   the fields are assembled
 /// - `start = hook`: `async fn(&Foo, FooState<Start>, StartContext<'_, Self>)`, implements
@@ -65,7 +65,8 @@ pub use dijavu_macros::Injectable;
 ///
 /// This works like the derive macro for [`Injectable`](macro@Injectable), except that `bind` and
 /// `start` are not supported, as they require an injectable, and that hooks receive the context of a
-/// field, like [`FieldPrepareContext`].
+/// field, like [`FieldPrepareContext`]. As there is no `FooState<Preparing<'_>>` for a field, the
+/// `prepared` hook is an `async fn(&mut FooState<Prepare>, FieldPrepareContext<'_>)`.
 ///
 /// The generated state has no `ctx` field. A struct without any fields has nothing to hold, so no
 /// state struct is generated for it, and its hooks receive `&mut ()` as the state.

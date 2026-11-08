@@ -403,7 +403,22 @@ impl<'a> Derive<'a> {
 
         let declare_hook = run_hook(self.args.declare.as_ref(), quote!());
         let prepare_hook = run_hook(self.args.prepare.as_ref(), quote!(.await));
-        let prepared_hook = run_hook(self.args.prepared.as_ref(), quote!(.await));
+        let prepared_hook = if self.has_ctx {
+            // the `Preparing` state of an injectable holds its context
+            self.args.prepared.as_ref().map(|hook| {
+                quote!(
+                    let mut __preparing =
+                        <Self as dijavu::Injectable>::make_preparing(__state, __ctx);
+                    let _: () = ::core::result::Result::map_err(
+                        (#hook)(&mut __preparing).await,
+                        ::core::convert::Into::<dijavu::Error>::into,
+                    )?;
+                    let (_, __state) = dijavu::Preparing::into_parts(__preparing);
+                )
+            })
+        } else {
+            run_hook(self.args.prepared.as_ref(), quote!(.await))
+        };
         let assemble_hook = run_hook(self.args.assemble.as_ref(), quote!(.await));
         let registers = self.args.registers();
         let declare_ctx = &contexts.declare;

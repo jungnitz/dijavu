@@ -5,17 +5,22 @@ mod depend;
 mod fields;
 mod inject;
 mod inject_all;
+mod inject_map;
 mod input;
 mod late;
 mod option;
 mod registered_values;
 mod start_value;
+mod tuple;
 mod value;
+
+use std::{future, marker::PhantomData};
 
 pub use depend::*;
 pub use fields::*;
 pub use inject::*;
 pub use inject_all::*;
+pub use inject_map::*;
 pub use input::*;
 pub use late::*;
 pub use start_value::*;
@@ -50,4 +55,28 @@ pub trait InjectableField: Visitable + Sized + Send + Sync + 'static {
         preparation: Self::Preparation,
         ctx: FieldAssembleContext<'_>,
     ) -> impl Future<Output = Result<(Self, Self::Start), Error>> + Send;
+}
+
+impl<T: Send + Sync + ?Sized + 'static> InjectableField for PhantomData<T> {
+    type Declaration = ();
+    type Preparation = ();
+    type Start = ();
+
+    fn declare(_ctx: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
+        Ok(())
+    }
+
+    fn prepare(
+        _declaration: Self::Declaration,
+        _ctx: FieldPrepareContext<'_>,
+    ) -> impl Future<Output = Result<Self::Preparation, Error>> + Send {
+        future::ready(Ok(()))
+    }
+
+    fn assemble(
+        _preparation: Self::Preparation,
+        _ctx: FieldAssembleContext<'_>,
+    ) -> impl Future<Output = Result<(Self, Self::Start), Error>> + Send {
+        future::ready(Ok((PhantomData, ())))
+    }
 }

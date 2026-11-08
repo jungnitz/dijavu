@@ -55,7 +55,13 @@ impl<T: ?Sized> Ref<T> {
     /// `injectables`, optionally converted via an unsizing coercion. It must not access any of the
     /// stored values (e.g. via [`Injectables::get`]), as one of them may be borrowed mutably while
     /// it is called.
-    unsafe fn with_resolver(resolve: fn(&Injectables) -> Option<NonNull<T>>) -> Self {
+    ///
+    /// The `Send + Sync` bound is what makes the unconditional `Send` and `Sync` implementations
+    /// of `Ref` sound, as this is the only way to create a `Ref`.
+    unsafe fn with_resolver(resolve: fn(&Injectables) -> Option<NonNull<T>>) -> Self
+    where
+        T: Send + Sync,
+    {
         Self { ptr: None, resolve }
     }
 
@@ -87,9 +93,15 @@ impl<T: ?Sized> Deref for Ref<T> {
     }
 }
 
-// SAFETY: `Ref<T>` behaves like a `&T`
-unsafe impl<T: ?Sized + Send + Sync> Send for Ref<T> {}
-unsafe impl<T: ?Sized + Send + Sync> Sync for Ref<T> {}
+// SAFETY: `Ref<T>` behaves like a `&T`, which is `Send` and `Sync` if `T: Sync`. Every `Ref` is
+// created via `with_resolver`, which requires `T: Send + Sync` (`new` has `T: Injectable` and
+// `unsized_from` has `T: UnsizeFrom<I>`, both of which imply it). The bound is intentionally not
+// repeated here: it would make the auto traits of every injectable depend on those of the
+// injectables it references, which overflows for recursive generic injectables (e.g. `Foo<T>`
+// referencing `Foo<T::Parent>`).
+unsafe impl<T: ?Sized> Send for Ref<T> {}
+// SAFETY: see `Send` above
+unsafe impl<T: ?Sized> Sync for Ref<T> {}
 
 /// Enables or disables the references contained in an injectable.
 ///

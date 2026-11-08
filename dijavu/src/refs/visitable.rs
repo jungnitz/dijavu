@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use crate::refs::RefVisitor;
 
 /// Gives access to references between injectables.
@@ -29,11 +31,6 @@ pub unsafe trait Visitable {
     fn visit_refs(&mut self, visitor: &mut RefVisitor<'_>);
 }
 
-// SAFETY: does not visit anything
-unsafe impl Visitable for () {
-    fn visit_refs(&mut self, _visitor: &mut RefVisitor<'_>) {}
-}
-
 // SAFETY: the contained value can only be taken or replaced through `&mut self`, so every call
 // visits the same references as long as `T` does
 unsafe impl<T: Visitable> Visitable for Option<T> {
@@ -43,3 +40,19 @@ unsafe impl<T: Visitable> Visitable for Option<T> {
         }
     }
 }
+
+#[macro_export]
+macro_rules! visit_nothing_in {
+    ($ty:ident $(<$($g:ident $(: $(?$unsized:ident)? $(+)? $($bound:ident $(+ $more:ident)*)?)?),*>)?) => {
+        // SAFETY: does not visit anything
+        unsafe impl$(<$($g $(: $(?$unsized +)? $($bound + $($more +)*)?)?),*>)? $crate::Visitable
+            for $ty <$($($g,)*)?>
+        {
+            fn visit_refs(&mut self, _visitor: &mut $crate::RefVisitor<'_>) {}
+        }
+    };
+}
+
+type Unit = ();
+visit_nothing_in!(Unit);
+visit_nothing_in!(PhantomData<T: ?Sized>);

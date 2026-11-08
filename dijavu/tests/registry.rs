@@ -242,10 +242,7 @@ fn numbers(values: &RegisteredValues<Number>) -> Vec<u32> {
 }
 
 impl NumbersField {
-    async fn on_prepared(
-        state: &mut NumbersFieldState<Prepare>,
-        _ctx: PrepareContext<'_, Self>,
-    ) -> Result<(), Error> {
+    async fn on_prepared(state: &mut NumbersFieldState<Preparing<'_>>) -> Result<(), Error> {
         state.prepared = numbers(&state.numbers);
         Ok(())
     }
