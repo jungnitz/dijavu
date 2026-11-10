@@ -5,8 +5,8 @@ use syn::parse::Parse;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
-    Data, DeriveInput, Expr, Fields, GenericParam, Generics, Ident, Index, Member, Meta, Token,
-    Type, Visibility, parse_quote,
+    Attribute, Data, DeriveInput, Expr, Fields, GenericParam, Generics, Ident, Index, Member, Meta,
+    Path, Token, Type, Visibility, parse_quote,
 };
 
 use crate::visitable;
@@ -14,6 +14,7 @@ use crate::visitable;
 /// Derives `Injectable` and `Visitable`, and generates the state struct.
 pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
     let derive = Derive::new(&input, true)?;
+    let krate = &derive.krate;
     let state = &derive.state;
     let ident = &input.ident;
     let binds = derive.args.binds();
@@ -22,19 +23,19 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
     let owner = quote!(#ident #ty_gen);
     let state_struct = derive.state_struct(
         &input.generics,
-        &quote!(dijavu::state::InjectableState<#owner>),
+        &quote!(#krate::state::InjectableState<#owner>),
     );
 
-    let declaration = derive.state_ty(quote!(dijavu::state::Declare));
-    let preparation = derive.state_ty(quote!(dijavu::state::Prepare));
-    let preparing = derive.state_ty(quote!(dijavu::state::Preparing<'__ctx>));
-    let start = derive.state_ty(quote!(dijavu::state::Start));
+    let declaration = derive.state_ty(quote!(#krate::state::Declare));
+    let preparation = derive.state_ty(quote!(#krate::state::Prepare));
+    let preparing = derive.state_ty(quote!(#krate::state::Preparing<'__ctx>));
+    let start = derive.state_ty(quote!(#krate::state::Start));
 
     let steps = derive.steps(
         &Contexts {
-            declare: quote!(dijavu::DeclareContext<'_, Self>),
-            prepare: quote!(dijavu::PrepareContext<'_, Self>),
-            assemble: quote!(dijavu::AssembleContext<'_, Self>),
+            declare: quote!(#krate::DeclareContext<'_, Self>),
+            prepare: quote!(#krate::PrepareContext<'_, Self>),
+            assemble: quote!(#krate::AssembleContext<'_, Self>),
             for_field: quote!(__ctx.field()),
         },
         &quote!(#(__ctx.bind::<#binds, Self>()?;)*),
@@ -51,11 +52,11 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
             async fn start(
                 &self,
                 __state: Self::Start,
-                __ctx: dijavu::StartContext<'_, Self>,
-            ) -> ::core::result::Result<(), dijavu::Error> {
+                __ctx: #krate::StartContext<'_, Self>,
+            ) -> ::core::result::Result<(), #krate::Error> {
                 ::core::result::Result::map_err(
                     (#hook)(self, __state, __ctx).await,
-                    ::core::convert::Into::<dijavu::Error>::into,
+                    ::core::convert::Into::<#krate::Error>::into,
                 )
             }
         )
@@ -65,30 +66,30 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
     let members = derive.fields.iter().map(|field| &field.member);
     let members_again = members.clone();
 
-    let visitable = visitable::derive_visitable(input.clone())?;
+    let visitable = visitable::derive_visitable_with_crate(input.clone(), krate)?;
     Ok(quote!(
         #state_struct
 
         #visitable
 
         #[automatically_derived]
-        impl #preparing_impl_gen dijavu::Preparing<'__ctx, #owner> for #preparing #where_clause {
+        impl #preparing_impl_gen #krate::Preparing<'__ctx, #owner> for #preparing #where_clause {
             fn make(
                 preparation: #preparation,
-                ctx: dijavu::PrepareContext<'__ctx, #owner>,
+                ctx: #krate::PrepareContext<'__ctx, #owner>,
             ) -> Self {
                 #state { #ctx: ctx, #(#members_again: preparation.#members_again,)* }
             }
 
             fn into_parts(
                 self,
-            ) -> (dijavu::PrepareContext<'__ctx, #owner>, #preparation) {
+            ) -> (#krate::PrepareContext<'__ctx, #owner>, #preparation) {
                 (self.#ctx, #state { #ctx: (), #(#members: self.#members,)* })
             }
         }
 
         #[automatically_derived]
-        impl #impl_gen dijavu::Injectable for #owner #where_clause {
+        impl #impl_gen #krate::Injectable for #owner #where_clause {
             type Declaration = #declaration;
             type Preparation = #preparation;
             type Preparing<'__ctx> = #preparing;
@@ -104,6 +105,7 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
 /// Derives `InjectableField` and `Visitable`, and generates the state struct.
 pub fn derive_injectable_field(input: DeriveInput) -> syn::Result<TokenStream> {
     let derive = Derive::new(&input, false)?;
+    let krate = &derive.krate;
     if let Some(bind) = derive.args.binds().next() {
         return Err(syn::Error::new(
             bind.span(),
@@ -124,18 +126,18 @@ pub fn derive_injectable_field(input: DeriveInput) -> syn::Result<TokenStream> {
         let ty = field.ty;
         where_clause
             .predicates
-            .push(parse_quote!(#ty: dijavu::InjectableField));
+            .push(parse_quote!(#ty: #krate::InjectableField));
     }
 
-    let state_struct = derive.state_struct(&generics, &quote!(dijavu::state::InjectableFieldState));
-    let declaration = derive.state_ty(quote!(dijavu::state::Declare));
-    let preparation = derive.state_ty(quote!(dijavu::state::Prepare));
-    let start = derive.state_ty(quote!(dijavu::state::Start));
+    let state_struct = derive.state_struct(&generics, &quote!(#krate::state::InjectableFieldState));
+    let declaration = derive.state_ty(quote!(#krate::state::Declare));
+    let preparation = derive.state_ty(quote!(#krate::state::Prepare));
+    let start = derive.state_ty(quote!(#krate::state::Start));
     let steps = derive.steps(
         &Contexts {
-            declare: quote!(dijavu::FieldDeclareContext<'_>),
-            prepare: quote!(dijavu::FieldPrepareContext<'_>),
-            assemble: quote!(dijavu::FieldAssembleContext<'_>),
+            declare: quote!(#krate::FieldDeclareContext<'_>),
+            prepare: quote!(#krate::FieldPrepareContext<'_>),
+            assemble: quote!(#krate::FieldAssembleContext<'_>),
             for_field: quote!(__ctx.reborrow()),
         },
         &quote!(),
@@ -145,14 +147,14 @@ pub fn derive_injectable_field(input: DeriveInput) -> syn::Result<TokenStream> {
     let (impl_gen, _, where_clause) = generics.split_for_impl();
     let (_, ty_gen, _) = input.generics.split_for_impl();
 
-    let visitable = visitable::derive_visitable(input.clone())?;
+    let visitable = visitable::derive_visitable_with_crate(input.clone(), krate)?;
     Ok(quote!(
         #state_struct
 
         #visitable
 
         #[automatically_derived]
-        impl #impl_gen dijavu::InjectableField for #ident #ty_gen #where_clause {
+        impl #impl_gen #krate::InjectableField for #ident #ty_gen #where_clause {
             type Declaration = #declaration;
             type Preparation = #preparation;
             type Start = #start;
@@ -164,12 +166,14 @@ pub fn derive_injectable_field(input: DeriveInput) -> syn::Result<TokenStream> {
 
 #[expect(clippy::redundant_field_names, reason = "emitted by FromDeriveInput")]
 mod args {
-    use super::{Expr, FromDeriveInput, List, Type};
+    use super::{Expr, FromDeriveInput, List, Path, Type};
 
     /// The attributes given via `#[injectable(...)]`.
     #[derive(FromDeriveInput)]
     #[darling(attributes(injectable))]
     pub struct Args {
+        #[darling(rename = "crate")]
+        pub krate: Option<Path>,
         pub declare: Option<Expr>,
         pub prepare: Option<Expr>,
         pub prepared: Option<Expr>,
@@ -223,6 +227,10 @@ struct Field<'a> {
 /// The parts shared between the derive macros.
 struct Derive<'a> {
     args: Args,
+    /// The path to the `dijavu` crate
+    krate: Path,
+    /// The `#[allow(...)]` attributes of the struct, which are copied onto the generated struct
+    allows: Vec<&'a Attribute>,
     fields: Vec<Field<'a>>,
     is_tuple: bool,
     /// The name of the generated struct
@@ -287,8 +295,15 @@ impl<'a> Derive<'a> {
 
         let is_tuple = matches!(data.fields, Fields::Unnamed(_));
         let ident = &input.ident;
+        let args = Args::from_derive_input(input)?;
         Ok(Self {
-            args: Args::from_derive_input(input)?,
+            krate: args.krate.clone().unwrap_or_else(|| parse_quote!(dijavu)),
+            allows: input
+                .attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("allow"))
+                .collect(),
+            args,
             has_ctx,
             ctx: if is_tuple {
                 member(None, fields.len())
@@ -344,6 +359,7 @@ impl<'a> Derive<'a> {
         let state = &self.state;
         let vis = self.vis;
         let doc = &self.doc;
+        let allows = &self.allows;
         let context = self.has_ctx.then(|| {
             let ty = quote!(<__S as #step_trait>::ContextField);
             if self.is_tuple { ty } else { quote!(ctx: #ty) }
@@ -365,6 +381,7 @@ impl<'a> Derive<'a> {
         quote!(
             #[doc = #doc]
             #[allow(dead_code)]
+            #(#allows)*
             #vis struct #state #impl_gen #body
         )
     }
@@ -372,6 +389,7 @@ impl<'a> Derive<'a> {
     /// Returns the `declare`, `prepare` and `assemble` functions, which have the same signatures
     /// for injectables and their fields, except for the contexts.
     fn steps(&self, contexts: &Contexts, after_declare: &TokenStream) -> TokenStream {
+        let krate = &self.krate;
         let for_field = &contexts.for_field;
         let field = |step: &str, input: fn(&Member) -> TokenStream, suffix: TokenStream| {
             let step = format_ident!("{step}");
@@ -381,7 +399,7 @@ impl<'a> Derive<'a> {
                 let input = input(member);
                 let suffix = &suffix;
                 quote!(
-                    #member: <#ty as dijavu::InjectableField>::#step(
+                    #member: <#ty as #krate::InjectableField>::#step(
                         #input #for_field
                     ) #suffix?
                 )
@@ -401,25 +419,25 @@ impl<'a> Derive<'a> {
         let types: Vec<_> = self.fields.iter().map(|field| field.ty).collect();
         let start = self.state_value(&quote!(#(#members: #assembled.1,)*));
 
-        let declare_hook = run_hook(self.args.declare.as_ref(), quote!());
-        let prepare_hook = run_hook(self.args.prepare.as_ref(), quote!(.await));
+        let declare_hook = run_hook(krate, self.args.declare.as_ref(), quote!());
+        let prepare_hook = run_hook(krate, self.args.prepare.as_ref(), quote!(.await));
         let prepared_hook = if self.has_ctx {
             // the `Preparing` state of an injectable holds its context
             self.args.prepared.as_ref().map(|hook| {
                 quote!(
                     let mut __preparing =
-                        <Self::Preparing<'_> as dijavu::Preparing<'_, Self>>::make(__state, __ctx);
+                        <Self::Preparing<'_> as #krate::Preparing<'_, Self>>::make(__state, __ctx);
                     let _: () = ::core::result::Result::map_err(
                         (#hook)(&mut __preparing).await,
-                        ::core::convert::Into::<dijavu::Error>::into,
+                        ::core::convert::Into::<#krate::Error>::into,
                     )?;
-                    let (_, __state) = dijavu::Preparing::into_parts(__preparing);
+                    let (_, __state) = #krate::Preparing::into_parts(__preparing);
                 )
             })
         } else {
-            run_hook(self.args.prepared.as_ref(), quote!(.await))
+            run_hook(krate, self.args.prepared.as_ref(), quote!(.await))
         };
-        let assemble_hook = run_hook(self.args.assemble.as_ref(), quote!(.await));
+        let assemble_hook = run_hook(krate, self.args.assemble.as_ref(), quote!(.await));
         let registers = self.args.registers();
         let declare_ctx = &contexts.declare;
         let prepare_ctx = &contexts.prepare;
@@ -429,7 +447,7 @@ impl<'a> Derive<'a> {
             #[allow(unused_mut, unused_variables)]
             fn declare(
                 mut __ctx: #declare_ctx,
-            ) -> ::core::result::Result<Self::Declaration, dijavu::Error> {
+            ) -> ::core::result::Result<Self::Declaration, #krate::Error> {
                 let mut __state: Self::Declaration = #declaration;
                 #declare_hook
                 #(__ctx.register(#registers);)*
@@ -441,7 +459,7 @@ impl<'a> Derive<'a> {
             async fn prepare(
                 mut __state: Self::Declaration,
                 mut __ctx: #prepare_ctx,
-            ) -> ::core::result::Result<Self::Preparation, dijavu::Error> {
+            ) -> ::core::result::Result<Self::Preparation, #krate::Error> {
                 #prepare_hook
                 let mut __state: Self::Preparation = #preparation;
                 #prepared_hook
@@ -452,10 +470,10 @@ impl<'a> Derive<'a> {
             async fn assemble(
                 mut __state: Self::Preparation,
                 mut __ctx: #assemble_ctx,
-            ) -> ::core::result::Result<(Self, Self::Start), dijavu::Error> {
+            ) -> ::core::result::Result<(Self, Self::Start), #krate::Error> {
                 #assemble_hook
                 #(
-                    let #assembled = <#types as dijavu::InjectableField>::assemble(
+                    let #assembled = <#types as #krate::InjectableField>::assemble(
                         __state.#members, #for_field
                     ).await?;
                 )*
@@ -468,12 +486,12 @@ impl<'a> Derive<'a> {
     }
 }
 
-fn run_hook(hook: Option<&Expr>, suffix: TokenStream) -> Option<TokenStream> {
+fn run_hook(krate: &Path, hook: Option<&Expr>, suffix: TokenStream) -> Option<TokenStream> {
     hook.map(|hook| {
         quote!(
             let _: () = ::core::result::Result::map_err(
                 (#hook)(&mut __state, __ctx.reborrow()) #suffix,
-                ::core::convert::Into::<dijavu::Error>::into,
+                ::core::convert::Into::<#krate::Error>::into,
             )?;
         )
     })

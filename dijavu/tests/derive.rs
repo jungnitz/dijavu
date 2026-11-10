@@ -440,3 +440,43 @@ struct Private;
 pub struct PublicDerived {
     private: Inject<Private>,
 }
+
+mod reexport {
+    pub use dijavu as renamed;
+}
+
+/// No `dijavu` is in scope here, so everything must go through the given crate path.
+mod custom_crate_path {
+    use super::reexport::renamed::{self, fields::Value};
+
+    #[derive(renamed::Injectable)]
+    #[injectable(crate = super::reexport::renamed)]
+    #[allow(non_camel_case_types)]
+    pub struct lower_case {
+        pub value: Value<u32>,
+        pub field: Field,
+    }
+
+    #[derive(renamed::InjectableField)]
+    #[injectable(crate = super::reexport::renamed)]
+    pub struct Field {
+        pub value: Value<u32>,
+    }
+
+    #[derive(renamed::Visitable)]
+    #[visitable(crate = super::reexport::renamed)]
+    pub struct Visited;
+}
+
+#[test]
+fn custom_crate_path() {
+    let injector = build::<custom_crate_path::lower_case>();
+    assert_eq!(*injector.get::<custom_crate_path::lower_case>().value, 0);
+    assert_eq!(
+        *injector.get::<custom_crate_path::lower_case>().field.value,
+        0
+    );
+    assert_visitable(custom_crate_path::Visited);
+}
+
+fn assert_visitable<T: Visitable>(_: T) {}

@@ -51,8 +51,13 @@ pub use target::Target;
 ///   the fields are assembled
 /// - `start = hook`: `async fn(&Foo, FooState<Start>, StartContext<'_, Self>)`, implements
 ///   [`Injectable::start`]
+/// - `crate = path`: the path to this crate, `dijavu` by default, e.g. when it is re-exported by
+///   another crate
 ///
 /// Fields can be excluded from visiting via `#[visitable(skip)]`.
+///
+/// `#[allow(...)]` attributes on the struct are copied onto `FooState`, e.g. to allow
+/// `non_camel_case_types` for both.
 ///
 /// # Generics
 ///
@@ -74,5 +79,6 @@ pub use dijavu_macros::InjectableField;
 
 /// Derives [`Visitable`] by forwarding the visitor to every field.
 ///
-/// Fields can be excluded via `#[visitable(skip)]`.
+/// Fields can be excluded via `#[visitable(skip)]`. The path to this crate can be set via
+/// `#[visitable(crate = path)]` on the type, it is `dijavu` by default.
 pub use dijavu_macros::Visitable;
