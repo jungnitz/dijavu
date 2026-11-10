@@ -1,0 +1,5 @@
+error: bare hook names refer to methods of the generated state struct, which does not exist for structs without fields, use a path instead
+ --> tests/ui/field_bare_hook_without_fields.rs:4:29
+  |
+4 | #[injectable(prepare_sync = on_prepare)]
+  |                             ^^^^^^^^^^

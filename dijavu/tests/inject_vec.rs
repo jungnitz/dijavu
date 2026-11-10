@@ -1,4 +1,4 @@
-//! `InjectAll` references all implementations that were added during the prepare step.
+//! `InjectVec` references all implementations that were added during the build.
 
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
@@ -8,7 +8,7 @@ use std::{
 
 use dijavu::{
     Builder, Error, FieldPrepareContext, Injectable, InjectableField, Injector, PrepareContext,
-    fields::{Depend, Inject, InjectAll, InjectToken},
+    fields::{Depend, Inject, InjectToken, InjectVec},
     state::{Declare, Preparing},
 };
 use futures::executor::block_on;
@@ -19,7 +19,7 @@ fn build<I: Injectable>() -> Result<Injector, Error> {
     block_on(builder.build())
 }
 
-fn names(services: &InjectAll<dyn Service>) -> Vec<&str> {
+fn names(services: &InjectVec<dyn Service>) -> Vec<&str> {
     services.iter().map(Service::name).collect()
 }
 
@@ -49,7 +49,7 @@ impl Service for Second {
 #[derive(Injectable)]
 #[injectable(prepare = Self::on_prepare)]
 struct AddsBoth {
-    services: InjectAll<dyn Service>,
+    services: InjectVec<dyn Service>,
     first: Inject<First>,
     second: Inject<Second>,
 }
@@ -61,7 +61,6 @@ impl AddsBoth {
     ) -> Result<(), Error> {
         state.services.add(state.second);
         state.services.add(state.first);
-        assert_eq!(state.services.len(), 2);
         Ok(())
     }
 }
@@ -98,7 +97,7 @@ fn iterates_by_reference_and_backwards() {
 
 #[derive(Injectable)]
 struct NoneAdded {
-    services: InjectAll<dyn Service>,
+    services: InjectVec<dyn Service>,
 }
 
 #[test]
@@ -112,7 +111,7 @@ fn may_be_empty() {
 #[derive(Injectable)]
 #[injectable(prepare = Self::on_prepare)]
 struct AddsTwice {
-    services: InjectAll<dyn Service>,
+    services: InjectVec<dyn Service>,
     first: Inject<First>,
 }
 
@@ -138,7 +137,7 @@ fn adding_again_references_again() {
 
 #[derive(Injectable)]
 struct Collects {
-    services: InjectAll<dyn Service>,
+    services: InjectVec<dyn Service>,
 }
 
 impl CollectsState<Preparing<'_>> {
@@ -195,7 +194,7 @@ fn other_injectables_can_add_implementations() {
 #[derive(Injectable)]
 #[injectable(prepare = Self::on_prepare)]
 struct AddsItself {
-    services: InjectAll<dyn Service>,
+    services: InjectVec<dyn Service>,
     first: Inject<First>,
 }
 
@@ -230,7 +229,7 @@ static DROP_ACCESS: AtomicU8 = AtomicU8::new(0);
 #[derive(Injectable)]
 #[injectable(prepare = Self::on_prepare)]
 struct AccessesOnDrop {
-    services: InjectAll<dyn Service>,
+    services: InjectVec<dyn Service>,
     first: Inject<First>,
 }
 
@@ -265,7 +264,7 @@ fn references_are_disabled_before_drop() {
 #[derive(InjectableField)]
 #[injectable(prepare = Self::on_prepare)]
 struct Group {
-    services: InjectAll<dyn Service>,
+    services: InjectVec<dyn Service>,
     first: Inject<First>,
 }
 
@@ -285,7 +284,7 @@ struct UsesGroup {
 }
 
 #[test]
-fn inject_all_in_a_reusable_field() {
+fn inject_vec_in_a_reusable_field() {
     let injector = build::<UsesGroup>().unwrap();
     assert_eq!(
         names(&injector.get::<UsesGroup>().group.services),

@@ -82,6 +82,22 @@ impl<'ctx> FieldAssembleContext<'ctx> {
         Ref::unsized_from::<To>()
     }
 
+    /// Returns references to the providers of `D`, in the order in which they were added to the
+    /// build.
+    pub(crate) fn get_provided_refs<D: ?Sized + Send + Sync + 'static>(&mut self) -> Vec<Ref<D>> {
+        let refs: Vec<_> = self.state.providers.get_refs_and_indices::<D>().collect();
+        refs.into_iter()
+            .map(|(reference, to_index)| {
+                self.state.dependency_graph.add_dependency(
+                    self.node_index,
+                    to_index,
+                    DependencyType::Soft,
+                );
+                reference
+            })
+            .collect()
+    }
+
     /// Returns a reference to the injectable `To` is bound to, which will be enabled once the
     /// build has finished.
     ///

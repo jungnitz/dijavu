@@ -4,6 +4,7 @@ mod declare;
 mod dependency_graph;
 mod inputs;
 mod prepare;
+mod providers;
 mod registry;
 mod start;
 mod value_per_injectable;
@@ -16,11 +17,11 @@ pub use self::registry::{Registered, RegisteredValues};
 pub use self::start::StartContext;
 
 use crate::{
-    Bindable, Error, Injectable, Injector,
+    Bindable, Error, Injectable, Injector, UnsizeFrom,
     build::{
         assemble::AssembleStep, bindings::Bindings, declare::DeclareStep,
         dependency_graph::DependencyGraph, inputs::Inputs, prepare::PrepareStep,
-        registry::Registry,
+        providers::Providers, registry::Registry,
     },
     error::BindingConflictError,
 };
@@ -54,6 +55,13 @@ impl Builder {
         Ok(self)
     }
 
+    /// Adds the injectable `I` as a provider of `D` (e.g. a trait object), see
+    /// [`FieldDeclareContext::provide`].
+    pub fn provide<D: ?Sized + UnsizeFrom<I>, I: Injectable>(&mut self) -> &mut Self {
+        self.state.provide::<D, I>();
+        self
+    }
+
     /// Sets the value that [`Input<T>`](crate::fields::Input) provides, replacing any previous
     /// value of the same type.
     pub fn set_input<T: Send + Sync + 'static>(&mut self, value: T) -> &mut Self {
@@ -79,6 +87,7 @@ impl Builder {
 pub struct BuildState<Step> {
     dependency_graph: DependencyGraph,
     bindings: Bindings,
+    providers: Providers,
     registry: Registry,
     inputs: Inputs,
     step: Step,
@@ -90,6 +99,7 @@ impl<Step> BuildState<Step> {
             BuildState {
                 dependency_graph: self.dependency_graph,
                 bindings: self.bindings,
+                providers: self.providers,
                 registry: self.registry,
                 inputs: self.inputs,
                 step: new_step,

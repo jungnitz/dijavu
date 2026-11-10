@@ -1,0 +1,5 @@
+error: `start` is not supported for `InjectableField`
+ --> tests/ui/field_start_sync.rs:4:27
+  |
+4 | #[injectable(start_sync = Self::on_start)]
+  |                           ^^^^^^^^^^^^^^

@@ -29,10 +29,10 @@ pub trait Bindable<I: Injectable>: Target + UnsizeFrom<I> {}
 
 /// Implement [`UnsizeFrom`] for trait objects.
 ///
-/// This implements [`UnsizeFrom`] for `dyn _`, so that `InjectAll<dyn _>` can be used. As nothing
-/// can be bound to `dyn _`, `Inject<dyn _>` and `Depend<dyn _>` do not compile, unless
-/// [`bindable!`](crate::bindable) is used instead. The trait object must be `Send + Sync`, either
-/// via supertraits or by adding the bounds:
+/// This implements [`UnsizeFrom`] for `dyn _`, so that `InjectAll<dyn _>` and `InjectVec<dyn _>`
+/// can be used. As nothing can be bound to `dyn _`, `Inject<dyn _>` and `Depend<dyn _>` do not
+/// compile, unless [`bindable!`](crate::bindable) is used instead. The trait object must be
+/// `Send + Sync`, either via supertraits or by adding the bounds:
 ///
 /// ```
 /// trait Service: Send + Sync {}
@@ -65,8 +65,8 @@ macro_rules! unsizable {
 ///
 /// This implements [`Target`] and [`Bindable`] for `dyn _`, so that `Inject<dyn _>` and
 /// `Depend<dyn _>` can be used. It includes [`unsizable!`](crate::unsizable), so `InjectAll<dyn _>`
-/// can be used as well. The trait object must be `Send + Sync`, either via supertraits or by adding
-/// the bounds:
+/// and `InjectVec<dyn _>` can be used as well. The trait object must be `Send + Sync`, either via
+/// supertraits or by adding the bounds:
 ///
 /// ```
 /// trait Service: Send + Sync {}

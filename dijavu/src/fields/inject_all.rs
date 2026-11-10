@@ -1,24 +1,25 @@
 use std::{iter::FusedIterator, slice};
 
 use crate::{
-    Error, FieldAssembleContext, FieldDeclareContext, FieldPrepareContext, Injectable,
-    InjectableField, RefVisitor, UnsizeFrom, Visitable, fields::InjectToken, refs::Ref,
+    Error, FieldAssembleContext, FieldDeclareContext, FieldPrepareContext, InjectableField,
+    RefVisitor, Visitable, refs::Ref,
 };
 
-/// References to any number of other injectables implementing `D`, which are added during the
-/// prepare step via [`InjectAllState::add`].
+/// References to all providers of `D` in the build, see [`FieldDeclareContext::provide`].
 ///
 /// Trait objects can be used here via [`unsizable!`](crate::unsizable), or via
 /// [`bindable!`](crate::bindable) if they should be bindable as well.
 ///
-/// The implementations are kept in the order in which they were added. While building, the state
-/// of the injectable holds an [`InjectAllState`]. Accessing the implementations panics until the
-/// build has finished.
+/// The providers are kept in the order in which they were added to the build. Providers that are
+/// not part of the build are not referenced, so they still have to be added, e.g. via an
+/// [`Inject`](super::Inject) field. To decide about the implementations instead, use
+/// [`InjectVec`](super::InjectVec). Accessing the implementations panics until the build has
+/// finished.
 ///
 /// # Example
 ///
 /// ```
-/// use dijavu::{*, fields::{Inject, InjectAll}, state::Declare};
+/// use dijavu::{*, fields::InjectAll};
 ///
 /// pub trait Handler: Send + Sync {
 ///     fn name(&self) -> &str;
@@ -26,6 +27,7 @@ use crate::{
 /// dijavu::unsizable!(Handler);
 ///
 /// #[derive(Injectable)]
+/// #[injectable(provide(dyn Handler))]
 /// struct Logging;
 ///
 /// impl Handler for Logging {
@@ -35,6 +37,7 @@ use crate::{
 /// }
 ///
 /// #[derive(Injectable)]
+/// #[injectable(provide(dyn Handler))]
 /// struct Metrics;
 ///
 /// impl Handler for Metrics {
@@ -44,71 +47,21 @@ use crate::{
 /// }
 ///
 /// #[derive(Injectable)]
-/// #[injectable(prepare = Self::add_handlers)]
 /// struct Server {
 ///     handlers: InjectAll<dyn Handler>,
-///     logging: Inject<Logging>,
-///     metrics: Inject<Metrics>,
-/// }
-///
-/// impl Server {
-///     async fn add_handlers(
-///         state: &mut ServerState<Declare>,
-///         _ctx: PrepareContext<'_, Self>,
-///     ) -> Result<(), Error> {
-///         state.handlers.add(state.logging);
-///         state.handlers.add(state.metrics);
-///         Ok(())
-///     }
 /// }
 ///
 /// let mut builder = Builder::new();
-/// builder.add::<Server>();
+/// builder.add::<Server>().add::<Logging>().add::<Metrics>();
 /// let injector = futures::executor::block_on(builder.build()).unwrap();
 /// let names: Vec<_> = injector.get::<Server>().handlers.iter().map(|h| h.name()).collect();
 /// assert_eq!(names, ["logging", "metrics"]);
 /// ```
 pub struct InjectAll<D: ?Sized + Send + Sync + 'static>(Vec<Ref<D>>);
 
-/// The state of an [`InjectAll`] during the build.
-pub struct InjectAllState<D: ?Sized + Send + Sync + 'static> {
-    /// Create the references to the implementations.
-    get_refs: Vec<fn(&mut FieldAssembleContext<'_>) -> Ref<D>>,
-}
-
-impl<D: ?Sized + Send + Sync + 'static> InjectAllState<D> {
-    /// Adds the injectable `T` as an implementation, after all previously added ones.
-    ///
-    /// Adding the same injectable multiple times references it multiple times.
-    ///
-    /// The token is obtained by adding an [`Inject`](super::Inject) field for `T`, or for the
-    /// injectable itself via its context, like
-    /// [`PrepareContext::inject_token`](crate::PrepareContext::inject_token).
-    ///
-    /// # Panics
-    ///
-    /// The assemble step panics if `T` is not part of the build, which can only happen if the token
-    /// was obtained during another build.
-    pub fn add<T: Injectable>(&mut self, _token: InjectToken<T>)
-    where
-        D: UnsizeFrom<T>,
-    {
-        self.get_refs.push(|ctx| ctx.get_ref_as::<D, T>());
-    }
-
-    /// Returns the number of implementations added so far.
-    pub fn len(&self) -> usize {
-        self.get_refs.len()
-    }
-
-    /// Returns whether no implementation has been added so far.
-    pub fn is_empty(&self) -> bool {
-        self.get_refs.is_empty()
-    }
-}
-
 impl<D: ?Sized + Send + Sync + 'static> InjectAll<D> {
-    /// Returns an iterator over the implementations, in the order in which they were added.
+    /// Returns an iterator over the implementations, in the order in which they were added to the
+    /// build.
     ///
     /// # Panics
     ///
@@ -138,14 +91,12 @@ impl<D: ?Sized + Send + Sync + 'static> InjectAll<D> {
 }
 
 impl<D: ?Sized + Send + Sync + 'static> InjectableField for InjectAll<D> {
-    type Declaration = InjectAllState<D>;
-    type Preparation = InjectAllState<D>;
+    type Declaration = ();
+    type Preparation = ();
     type Start = ();
 
     fn declare(_ctx: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
-        Ok(InjectAllState {
-            get_refs: Vec::new(),
-        })
+        Ok(())
     }
 
     async fn prepare(
@@ -156,15 +107,10 @@ impl<D: ?Sized + Send + Sync + 'static> InjectableField for InjectAll<D> {
     }
 
     async fn assemble(
-        preparation: Self::Preparation,
+        _preparation: Self::Preparation,
         mut ctx: FieldAssembleContext<'_>,
     ) -> Result<(Self, Self::Start), Error> {
-        let refs = preparation
-            .get_refs
-            .into_iter()
-            .map(|get_ref| get_ref(&mut ctx))
-            .collect();
-        Ok((Self(refs), ()))
+        Ok((Self(ctx.get_provided_refs::<D>()), ()))
     }
 }
 

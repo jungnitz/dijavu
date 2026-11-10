@@ -9,7 +9,8 @@ use crate::{
 /// initialization process.
 ///
 /// You can obtain one of these tokens by adding a [`Inject`] field for `T` to your [`Injectable`](crate::Injectable),
-/// or for the injectable itself via its context, like [`PrepareContext::inject_token`](crate::PrepareContext::inject_token).
+/// via [`FieldDeclareContext::inject`], or for the injectable itself via its context, like
+/// [`PrepareContext::inject_token`](crate::PrepareContext::inject_token).
 // Implementation Note: this token makes absolutely no **guarantees** about anything. It's just a
 // hint to the user on what he needs to do (add an `Inject` field) to achieve certain things. Do not
 // rely on it for any safety reasoning etc.

@@ -3,6 +3,7 @@
 mod build;
 pub mod error;
 pub mod fields;
+mod hook;
 mod injectable;
 mod injector;
 mod refs;
@@ -18,6 +19,7 @@ pub use build::{
 pub use error::Error;
 #[doc(inline)]
 pub use fields::InjectableField;
+pub use hook::HookResult;
 pub use injectable::{Injectable, Preparing};
 pub use injector::{Injector, InjectorHandle};
 pub use refs::{Bindable, RefVisitor, UnsizeFrom, Visitable};
@@ -34,12 +36,13 @@ pub use target::Target;
 /// `FooState<Start>` holds the [`InjectableField::Start`] of each field and is the
 /// [`Injectable::Start`] of `Foo`.
 ///
-/// The following attributes can be used as `#[injectable(...)]` on the struct. All hooks return a
-/// `Result<(), E>` with `E: Into<Error>`.
+/// The following attributes can be used as `#[injectable(...)]` on the struct.
 ///
 /// - `declare = hook`: `fn(&mut FooState<Declare>, DeclareContext<'_, Self>)`, runs after the
 ///   fields have been declared
 /// - `bind(dyn Trait, ...)`: binds the given targets to this injectable
+/// - `provide(dyn Trait, ...)`: provides the given types, so that every `InjectAll` of them
+///   references this injectable, see [`FieldDeclareContext::provide`]
 /// - `register(expr, ...)`: registers the value of each expression after the `declare` hook, see
 ///   [`FieldDeclareContext::register`]. The type of the expression decides what is registered, so trait
 ///   objects need a cast, like `Box::new(MyPlugin) as Box<dyn Plugin>`.
@@ -53,6 +56,15 @@ pub use target::Target;
 ///   [`Injectable::start`]
 /// - `crate = path`: the path to this crate, `dijavu` by default, e.g. when it is re-exported by
 ///   another crate
+///
+/// Hooks return a [`HookResult`]: `()` if they cannot fail, or `Result<(), E>` with
+/// `E: Into<Error>`. Apart from `declare`, hooks are async by default. Use `prepare_sync`,
+/// `prepared_sync`, `assemble_sync` or `start_sync` instead to give a sync hook with the same
+/// parameters.
+///
+/// A hook is any expression that can be called with its parameters, e.g. a path or a closure. A
+/// bare name like `prepared = fill` refers to a method of the state, i.e. `FooState::fill`, except
+/// for `start`, where it refers to `Foo::fill`.
 ///
 /// Fields can be excluded from visiting via `#[visitable(skip)]`.
 ///
@@ -68,13 +80,15 @@ pub use dijavu_macros::Injectable;
 /// Derives [`InjectableField`] and [`Visitable`] for a struct whose fields all implement
 /// [`InjectableField`].
 ///
-/// This works like the derive macro for [`Injectable`](macro@Injectable), except that `bind` and
-/// `start` are not supported, as they require an injectable, and that hooks receive the context of a
-/// field, like [`FieldPrepareContext`]. As there is no `FooState<Preparing<'_>>` for a field, the
-/// `prepared` hook is an `async fn(&mut FooState<Prepare>, FieldPrepareContext<'_>)`.
+/// This works like the derive macro for [`Injectable`](macro@Injectable), except that `bind`,
+/// `provide` and `start` are not supported, as they require an injectable, and that hooks receive
+/// the context of a field, like [`FieldPrepareContext`]. As there is no `FooState<Preparing<'_>>`
+/// for a field, the `prepared` hook is an
+/// `async fn(&mut FooState<Prepare>, FieldPrepareContext<'_>)`.
 ///
 /// The generated state has no `ctx` field. A struct without any fields has nothing to hold, so no
-/// state struct is generated for it, and its hooks receive `&mut ()` as the state.
+/// state struct is generated for it, and its hooks receive `&mut ()` as the state. Bare hook names
+/// cannot be used then.
 pub use dijavu_macros::InjectableField;
 
 /// Derives [`Visitable`] by forwarding the visitor to every field.

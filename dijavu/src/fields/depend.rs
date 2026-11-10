@@ -8,8 +8,14 @@ use crate::{
 /// Allows accessing the preparation of `T` via [`FieldPrepareContext::get`].
 ///
 /// You can obtain one of these tokens by adding a [`Depend`] field for `T` to your
-/// [`Injectable`](crate::Injectable).
+/// [`Injectable`](crate::Injectable), or via [`FieldDeclareContext::depend`].
 pub struct DependToken<T: ?Sized>(PhantomData<T>);
+
+impl<T: ?Sized> DependToken<T> {
+    pub(crate) fn new() -> Self {
+        Self(PhantomData)
+    }
+}
 
 /// A reference to another injectable that is prepared before the injectable containing it.
 ///
@@ -27,7 +33,7 @@ impl<T: ?Sized + Target> InjectableField for Depend<T> {
 
     fn declare(mut init: FieldDeclareContext<'_>) -> Result<Self::Declaration, Error> {
         T::declare(&mut init, DependencyType::Hard);
-        Ok(DependToken(PhantomData))
+        Ok(DependToken::new())
     }
 
     async fn prepare(

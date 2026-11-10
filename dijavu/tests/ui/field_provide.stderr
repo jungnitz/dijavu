@@ -1,0 +1,5 @@
+error: `provide` is not supported for `InjectableField`
+ --> tests/ui/field_provide.rs:7:22
+  |
+7 | #[injectable(provide(dyn Service))]
+  |                      ^^^^^^^^^^^

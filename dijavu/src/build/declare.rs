@@ -1,13 +1,13 @@
 use std::any::{TypeId, type_name};
 
 use crate::{
-    Bindable, Error, Injectable, Target,
+    Bindable, Error, Injectable, Target, UnsizeFrom,
     build::{
         BuildState, Registered, dependency_graph::NodeIndex, injectable_context,
         value_per_injectable::ValuePerInjectable,
     },
     error::{BindingConflictError, MissingInputError, UnboundError},
-    fields::Input,
+    fields::{DependToken, InjectToken, Input},
 };
 
 use super::dependency_graph::DependencyType;
@@ -58,6 +58,65 @@ impl<'a> FieldDeclareContext<'a> {
         &mut self,
     ) -> Result<(), BindingConflictError> {
         self.state.bind::<B, Impl>()
+    }
+
+    /// Adds the injectable `Impl` as a provider of `D` (e.g. a trait object), so that every
+    /// [`InjectAll<D>`](crate::fields::InjectAll) references it.
+    ///
+    /// Unlike [`bind`](Self::bind), any number of injectables can provide the same `D`. Providing
+    /// adds `Impl` to the build, and providing the same `D` multiple times from the same `Impl` has
+    /// no effect.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use dijavu::{*, fields::InjectAll};
+    ///
+    /// pub trait Handler: Send + Sync {
+    ///     fn name(&self) -> &str;
+    /// }
+    /// dijavu::unsizable!(Handler);
+    ///
+    /// #[derive(Injectable)]
+    /// #[injectable(provide(dyn Handler))]
+    /// struct Logging;
+    ///
+    /// impl Handler for Logging {
+    ///     fn name(&self) -> &str {
+    ///         "logging"
+    ///     }
+    /// }
+    ///
+    /// #[derive(Injectable)]
+    /// struct Server {
+    ///     handlers: InjectAll<dyn Handler>,
+    /// }
+    ///
+    /// let mut builder = Builder::new();
+    /// builder.add::<Server>().add::<Logging>();
+    /// let injector = futures::executor::block_on(builder.build()).unwrap();
+    /// let names: Vec<_> = injector.get::<Server>().handlers.iter().map(|h| h.name()).collect();
+    /// assert_eq!(names, ["logging"]);
+    /// ```
+    pub fn provide<D: ?Sized + UnsizeFrom<Impl>, Impl: Injectable>(&mut self) {
+        self.state.provide::<D, Impl>();
+    }
+
+    /// Adds `T` to the build, like an [`Inject`](crate::fields::Inject) field for it.
+    ///
+    /// `T` may be an injectable or a bound target (see [`Target`]).
+    pub fn inject<T: ?Sized + Target>(&mut self) -> InjectToken<T> {
+        T::declare(self, DependencyType::Soft);
+        InjectToken::new()
+    }
+
+    /// Adds `T` to the build and depends on it, like a [`Depend`](crate::fields::Depend) field for
+    /// it.
+    ///
+    /// `T` may be an injectable or a bound target (see [`Target`]).
+    pub fn depend<T: ?Sized + Target>(&mut self) -> DependToken<T> {
+        T::declare(self, DependencyType::Hard);
+        DependToken::new()
     }
 
     /// Registers a value that can be read via [`FieldPrepareContext::registered`] and
@@ -178,6 +237,11 @@ impl BuildState<DeclareStep> {
 
     pub(super) fn add<I: Injectable>(&mut self) {
         self.get_or_add::<I>();
+    }
+
+    pub(super) fn provide<D: ?Sized + UnsizeFrom<I>, I: Injectable>(&mut self) {
+        let node_index = self.get_or_add::<I>();
+        self.providers.provide::<D, I>(node_index);
     }
 
     pub(super) fn bind<B: ?Sized + Bindable<I>, I: Injectable>(

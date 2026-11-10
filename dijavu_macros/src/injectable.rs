@@ -18,6 +18,8 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
     let state = &derive.state;
     let ident = &input.ident;
     let binds = derive.args.binds();
+    let provides = derive.args.provides();
+    let hooks = derive.hooks()?;
 
     let (_, ty_gen, _) = input.generics.split_for_impl();
     let owner = quote!(#ident #ty_gen);
@@ -38,7 +40,11 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
             assemble: quote!(#krate::AssembleContext<'_, Self>),
             for_field: quote!(__ctx.field()),
         },
-        &quote!(#(__ctx.bind::<#binds, Self>()?;)*),
+        &hooks,
+        &quote!(
+            #(__ctx.bind::<#binds, Self>()?;)*
+            #(__ctx.provide::<#provides, Self>();)*
+        ),
     );
 
     let (impl_gen, _, where_clause) = input.generics.split_for_impl();
@@ -47,17 +53,15 @@ pub fn derive_injectable(input: DeriveInput) -> syn::Result<TokenStream> {
     preparing_generics.params.insert(0, parse_quote!('__ctx));
     let (preparing_impl_gen, _, _) = preparing_generics.split_for_impl();
 
-    let start_fn = derive.args.start.as_ref().map(|hook| {
+    let start_fn = hooks.start.as_ref().map(|hook| {
+        let call = hook.call(krate, &quote!(self, __state, __ctx));
         quote!(
             async fn start(
                 &self,
                 __state: Self::Start,
                 __ctx: #krate::StartContext<'_, Self>,
             ) -> ::core::result::Result<(), #krate::Error> {
-                ::core::result::Result::map_err(
-                    (#hook)(self, __state, __ctx).await,
-                    ::core::convert::Into::<#krate::Error>::into,
-                )
+                #call
             }
         )
     });
@@ -112,12 +116,24 @@ pub fn derive_injectable_field(input: DeriveInput) -> syn::Result<TokenStream> {
             "`bind` is not supported for `InjectableField`",
         ));
     }
-    if let Some(start) = &derive.args.start {
+    if let Some(provide) = derive.args.provides().next() {
+        return Err(syn::Error::new(
+            provide.span(),
+            "`provide` is not supported for `InjectableField`",
+        ));
+    }
+    if let Some(start) = derive
+        .args
+        .start
+        .as_ref()
+        .or(derive.args.start_sync.as_ref())
+    {
         return Err(syn::Error::new(
             start.span(),
             "`start` is not supported for `InjectableField`",
         ));
     }
+    let hooks = derive.hooks()?;
 
     // unlike for injectables, bounds on the field types can't lead to cycles here
     let mut generics = input.generics.clone();
@@ -140,6 +156,7 @@ pub fn derive_injectable_field(input: DeriveInput) -> syn::Result<TokenStream> {
             assemble: quote!(#krate::FieldAssembleContext<'_>),
             for_field: quote!(__ctx.reborrow()),
         },
+        &hooks,
         &quote!(),
     );
 
@@ -176,11 +193,17 @@ mod args {
         pub krate: Option<Path>,
         pub declare: Option<Expr>,
         pub prepare: Option<Expr>,
+        pub prepare_sync: Option<Expr>,
         pub prepared: Option<Expr>,
+        pub prepared_sync: Option<Expr>,
         pub assemble: Option<Expr>,
+        pub assemble_sync: Option<Expr>,
         pub start: Option<Expr>,
+        pub start_sync: Option<Expr>,
         #[darling(multiple)]
         pub bind: Vec<List<Type>>,
+        #[darling(multiple)]
+        pub provide: Vec<List<Type>>,
         #[darling(multiple)]
         pub register: Vec<List<Expr>>,
     }
@@ -192,9 +215,85 @@ impl Args {
         self.bind.iter().flat_map(|binds| &binds.0)
     }
 
+    fn provides(&self) -> impl Iterator<Item = &Type> {
+        self.provide.iter().flat_map(|provides| &provides.0)
+    }
+
     fn registers(&self) -> impl Iterator<Item = &Expr> {
         self.register.iter().flat_map(|registers| &registers.0)
     }
+}
+
+/// A hook given via `#[injectable(...)]`.
+struct Hook {
+    /// The function to call, with bare names resolved to methods of the state struct
+    func: TokenStream,
+    is_async: bool,
+}
+
+impl Hook {
+    /// Returns the hook given via `name = ...` or `{name}_sync = ...`, if any.
+    ///
+    /// A bare name like `fill` refers to a method of `owner`, which is `None` if there is no such
+    /// type.
+    fn new(
+        owner: Option<&TokenStream>,
+        name: &str,
+        async_hook: Option<&Expr>,
+        sync_hook: Option<&Expr>,
+    ) -> syn::Result<Option<Self>> {
+        let (expr, is_async) = match (async_hook, sync_hook) {
+            (None, None) => return Ok(None),
+            (Some(expr), None) => (expr, true),
+            (None, Some(expr)) => (expr, false),
+            (Some(_), Some(expr)) => {
+                return Err(syn::Error::new(
+                    expr.span(),
+                    format!("`{name}` and `{name}_sync` cannot be used together"),
+                ));
+            }
+        };
+        let func = match bare_name(expr) {
+            Some(ident) if let Some(owner) = owner => quote!(#owner::#ident),
+            Some(ident) => {
+                return Err(syn::Error::new(
+                    ident.span(),
+                    "bare hook names refer to methods of the generated state struct, which does \
+                     not exist for structs without fields, use a path instead",
+                ));
+            }
+            None => expr.to_token_stream(),
+        };
+        Ok(Some(Self { func, is_async }))
+    }
+
+    /// Returns the hook's call with the given arguments, as a `Result<(), Error>`.
+    fn call(&self, krate: &Path, args: &TokenStream) -> TokenStream {
+        let func = &self.func;
+        let await_call = self.is_async.then(|| quote!(.await));
+        quote!(#krate::HookResult::into_result((#func)(#args) #await_call))
+    }
+}
+
+/// Returns the name if the expression is a single identifier like `fill`.
+fn bare_name(expr: &Expr) -> Option<&Ident> {
+    let Expr::Path(path) = expr else {
+        return None;
+    };
+    if path.qself.is_some() || !path.attrs.is_empty() {
+        return None;
+    }
+    let ident = path.path.get_ident()?;
+    (ident != "Self").then_some(ident)
+}
+
+/// The hooks given via `#[injectable(...)]`.
+struct Hooks {
+    declare: Option<Hook>,
+    prepare: Option<Hook>,
+    prepared: Option<Hook>,
+    assemble: Option<Hook>,
+    start: Option<Hook>,
 }
 
 /// The items within an attribute like `bind(...)`.
@@ -319,6 +418,29 @@ impl<'a> Derive<'a> {
         })
     }
 
+    /// Returns the hooks. Bare names refer to methods of the generated state struct, except for
+    /// `start`, whose first parameter is the injectable itself.
+    fn hooks(&self) -> syn::Result<Hooks> {
+        let args = &self.args;
+        let state = self.has_state().then(|| self.state.to_token_stream());
+        let state = state.as_ref();
+        let hook = |name, async_hook: &Option<Expr>, sync_hook: &Option<Expr>| {
+            Hook::new(state, name, async_hook.as_ref(), sync_hook.as_ref())
+        };
+        Ok(Hooks {
+            declare: hook("declare", &None, &args.declare)?,
+            prepare: hook("prepare", &args.prepare, &args.prepare_sync)?,
+            prepared: hook("prepared", &args.prepared, &args.prepared_sync)?,
+            assemble: hook("assemble", &args.assemble, &args.assemble_sync)?,
+            start: Hook::new(
+                Some(&quote!(Self)),
+                "start",
+                args.start.as_ref(),
+                args.start_sync.as_ref(),
+            )?,
+        })
+    }
+
     /// Returns whether there is a generated struct. A reusable field without any fields has nothing
     /// to hold, so its state is `()`, as the build step would be unused otherwise.
     fn has_state(&self) -> bool {
@@ -388,7 +510,12 @@ impl<'a> Derive<'a> {
 
     /// Returns the `declare`, `prepare` and `assemble` functions, which have the same signatures
     /// for injectables and their fields, except for the contexts.
-    fn steps(&self, contexts: &Contexts, after_declare: &TokenStream) -> TokenStream {
+    fn steps(
+        &self,
+        contexts: &Contexts,
+        hooks: &Hooks,
+        after_declare: &TokenStream,
+    ) -> TokenStream {
         let krate = &self.krate;
         let for_field = &contexts.for_field;
         let field = |step: &str, input: fn(&Member) -> TokenStream, suffix: TokenStream| {
@@ -419,25 +546,23 @@ impl<'a> Derive<'a> {
         let types: Vec<_> = self.fields.iter().map(|field| field.ty).collect();
         let start = self.state_value(&quote!(#(#members: #assembled.1,)*));
 
-        let declare_hook = run_hook(krate, self.args.declare.as_ref(), quote!());
-        let prepare_hook = run_hook(krate, self.args.prepare.as_ref(), quote!(.await));
+        let declare_hook = run_hook(krate, hooks.declare.as_ref());
+        let prepare_hook = run_hook(krate, hooks.prepare.as_ref());
         let prepared_hook = if self.has_ctx {
             // the `Preparing` state of an injectable holds its context
-            self.args.prepared.as_ref().map(|hook| {
+            hooks.prepared.as_ref().map(|hook| {
+                let call = hook.call(krate, &quote!(&mut __preparing));
                 quote!(
                     let mut __preparing =
                         <Self::Preparing<'_> as #krate::Preparing<'_, Self>>::make(__state, __ctx);
-                    let _: () = ::core::result::Result::map_err(
-                        (#hook)(&mut __preparing).await,
-                        ::core::convert::Into::<#krate::Error>::into,
-                    )?;
+                    #call?;
                     let (_, __state) = #krate::Preparing::into_parts(__preparing);
                 )
             })
         } else {
-            run_hook(krate, self.args.prepared.as_ref(), quote!(.await))
+            run_hook(krate, hooks.prepared.as_ref())
         };
-        let assemble_hook = run_hook(krate, self.args.assemble.as_ref(), quote!(.await));
+        let assemble_hook = run_hook(krate, hooks.assemble.as_ref());
         let registers = self.args.registers();
         let declare_ctx = &contexts.declare;
         let prepare_ctx = &contexts.prepare;
@@ -486,14 +611,10 @@ impl<'a> Derive<'a> {
     }
 }
 
-fn run_hook(krate: &Path, hook: Option<&Expr>, suffix: TokenStream) -> Option<TokenStream> {
+fn run_hook(krate: &Path, hook: Option<&Hook>) -> Option<TokenStream> {
     hook.map(|hook| {
-        quote!(
-            let _: () = ::core::result::Result::map_err(
-                (#hook)(&mut __state, __ctx.reborrow()) #suffix,
-                ::core::convert::Into::<#krate::Error>::into,
-            )?;
-        )
+        let call = hook.call(krate, &quote!(&mut __state, __ctx.reborrow()));
+        quote!(#call?;)
     })
 }
 

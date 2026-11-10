@@ -13,10 +13,9 @@ use crate::{
 /// References to any number of other injectables implementing `V`, each stored under a key of type
 /// `K`, which are inserted during the prepare step via [`InjectMapState::insert`].
 ///
-/// This works like [`InjectAll`](super::InjectAll), but looks up the implementations by key
-/// instead of keeping them in order. Trait objects can be used here via
-/// [`unsizable!`](crate::unsizable), or via [`bindable!`](crate::bindable) if they should be
-/// bindable as well.
+/// This works like [`InjectVec`](super::InjectVec), but looks up the implementations by key instead
+/// of keeping them in order. Trait objects can be used here via [`unsizable!`](crate::unsizable),
+/// or via [`bindable!`](crate::bindable) if they should be bindable as well.
 ///
 /// # Example
 ///

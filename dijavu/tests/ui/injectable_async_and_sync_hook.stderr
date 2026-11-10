@@ -1,0 +1,5 @@
+error: `prepared` and `prepared_sync` cannot be used together
+ --> tests/ui/injectable_async_and_sync_hook.rs:4:54
+  |
+4 | #[injectable(prepared = on_prepared, prepared_sync = on_prepared)]
+  |                                                      ^^^^^^^^^^^

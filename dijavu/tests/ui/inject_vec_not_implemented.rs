@@ -1,6 +1,6 @@
 use dijavu::{
     Error, Injectable, PrepareContext,
-    fields::{Inject, InjectAll},
+    fields::{Inject, InjectVec},
     state::Declare,
 };
 
@@ -13,7 +13,7 @@ struct NotAService;
 #[derive(Injectable)]
 #[injectable(prepare = Self::on_prepare)]
 struct AddsWrongType {
-    services: InjectAll<dyn Service>,
+    services: InjectVec<dyn Service>,
     not_a_service: Inject<NotAService>,
 }
 
